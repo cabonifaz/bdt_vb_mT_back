@@ -86,9 +86,12 @@ check "solo ese talento" "$(body | jget .total)" 1
 check "otro usuario no usa mi colección" "$(srch "$A" "{\"collectionId\":\"$C\"}")" 404
 
 echo "== Favoritos compartidos"
-code -H "$A" $API/api/v1/auth/me >/dev/null; AID=$(body | jget .id)
-check "directorio de compañeros" "$(code -H "$R" $API/api/v1/tenant/colleagues)" 200
-check "el admin aparece en el directorio" "$(body | jget ".some(u=>u.id==='$AID')")" true
+code -H "$A" $API/api/v1/auth/me >/dev/null; AID=$(body | jget .id); AEM=$(body | jget .email)
+check "sin término no expone el directorio" "$(code -H "$R" $API/api/v1/tenant/colleagues)" 200
+check "lista vacía sin búsqueda" "$(body | jget .length)" 0
+check "buscar usuario por correo" "$(code -H "$R" "$API/api/v1/tenant/colleagues?q=${AEM%%@*}")" 200
+check "máximo 10 resultados" "$(body | jget '.length<=10')" true
+check "el admin aparece en la búsqueda" "$(body | jget ".some(u=>u.id==='$AID')")" true
 check "compartir con permiso VER" "$(code -X PUT -H "$R" -H "$J" -d '{"permission":"VIEW"}' $API/api/v1/tenant/collections/$C/shares/$AID)" 200
 code -H "$A" $API/api/v1/tenant/collections >/dev/null
 check "el compartido ve la colección (VIEW)" "$(body | jget ".find(c=>c.id==='$C').access")" VIEW

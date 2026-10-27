@@ -607,7 +607,13 @@ func (s *TalentService) UnshareCollection(ctx context.Context, p *domain.Princip
 	return s.Repo.UnshareCollection(ctx, meta(p, ip), tid, id, userID)
 }
 
-func (s *TalentService) Colleagues(ctx context.Context, p *domain.Principal) ([]domain.Colleague, error) {
+// Colleagues busca usuarios del tenant para compartir (nombre/correo cifrados: se filtra tras descifrar).
+// Nunca devuelve el directorio completo: exige al menos 2 caracteres y limita a ColleagueLimit.
+func (s *TalentService) Colleagues(ctx context.Context, p *domain.Principal, q string) ([]domain.Colleague, error) {
+	needle := foldText(q)
+	if utf8.RuneCountInString(needle) < 2 {
+		return []domain.Colleague{}, nil
+	}
 	tid, err := tenantOf(p)
 	if err != nil {
 		return nil, err
@@ -620,9 +626,23 @@ func (s *TalentService) Colleagues(ctx context.Context, p *domain.Principal) ([]
 	if err != nil {
 		return nil, err
 	}
-	out := make([]domain.Colleague, 0, len(people))
+	out := make([]domain.Colleague, 0, ColleagueLimit)
 	for _, x := range people {
+		if !strings.Contains(foldText(x.Name), needle) && !strings.Contains(foldText(x.Email), needle) {
+			continue
+		}
 		out = append(out, domain.Colleague{ID: x.UserID, Name: x.Name, Email: x.Email})
+		if len(out) == ColleagueLimit {
+			break
+		}
 	}
 	return out, nil
 }
+
+// ColleagueLimit es el máximo de resultados de la búsqueda de usuarios.
+const ColleagueLimit = 10
+
+var accentFold = strings.NewReplacer("á", "a", "é", "e", "í", "i", "ó", "o", "ú", "u", "ü", "u", "ñ", "n", "à", "a", "è", "e", "ì", "i", "ò", "o", "ù", "u")
+
+// foldText normaliza para comparar: minúsculas, sin tildes ni espacios extremos.
+func foldText(v string) string { return accentFold.Replace(strings.ToLower(strings.TrimSpace(v))) }

@@ -423,7 +423,7 @@ func (s *Server) unshareCollection(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listColleagues(w http.ResponseWriter, r *http.Request) {
-	list, err := s.Talents.Colleagues(r.Context(), principal(r))
+	list, err := s.Talents.Colleagues(r.Context(), principal(r), r.URL.Query().Get("q"))
 	if err != nil {
 		s.writeErr(w, r, err)
 		return
