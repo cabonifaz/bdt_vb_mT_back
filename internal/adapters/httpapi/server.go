@@ -27,6 +27,8 @@ type Deps struct {
 	ApiKeys      *app.ApiKeyService
 	Masters      *app.MasterService
 	Files        *app.FileService
+	Talents      *app.TalentService
+	Sync         ports.SyncRepository
 	Audit        ports.AuditRepository
 	Translations ports.TranslationRepository
 	Tokens       ports.TokenIssuer
@@ -95,6 +97,7 @@ func (s *Server) Handler() http.Handler {
 				r.With(s.requirePerm("tenant.apikeys.request")).Post("/api-keys/{id}/revoke", s.revokeApiKey)
 				r.With(s.requirePerm("tenant.translations.manage")).Put("/translations", s.upsertTranslation)
 				r.With(s.requirePerm("tenant.audit.read")).Get("/audit", s.listAudit)
+				r.Group(s.talentRoutes)
 			})
 
 			// Plataforma (Super Admin)

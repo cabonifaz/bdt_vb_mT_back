@@ -3,6 +3,8 @@ package app
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"net/http"
 	"path"
@@ -76,4 +78,9 @@ func (s *FileService) OpenPublic(ctx context.Context, fileUUID string) (*domain.
 		return nil, nil, domain.ErrNotFound
 	}
 	return f, rc, nil
+}
+
+func sha256Hex(b []byte) string {
+	s := sha256.Sum256(b)
+	return hex.EncodeToString(s[:])
 }

@@ -58,6 +58,8 @@ func Build(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, erro
 		ApiKeys:      &app.ApiKeyService{Repo: mysql.ApiKeyRepo{Store: store}, Pepper: cfg.APIKeyPepper},
 		Masters:      &app.MasterService{Repo: mysql.MasterRepo{Store: store}},
 		Files:        &app.FileService{Repo: fileRepo, Storage: files, Tenants: tenantRepo},
+		Talents:      &app.TalentService{Repo: mysql.TalentRepo{Store: store}, Cipher: cipher, Storage: files},
+		Sync:         mysql.SyncRepo{Store: store},
 		Audit:        mysql.AuditRepo{Store: store},
 		Translations: mysql.TranslationRepo{Store: store},
 		Tokens:       issuer,
