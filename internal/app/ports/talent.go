@@ -2,6 +2,7 @@ package ports
 
 import (
 	"context"
+	"time"
 
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/domain"
 )
@@ -63,10 +64,29 @@ type TalentRepository interface {
 	GetFile(ctx context.Context, m Meta, tenantID uint64, uuid string) (*domain.FileObject, error)
 	DeleteFile(ctx context.Context, m Meta, tenantID uint64, uuid string) error
 
-	Collections(ctx context.Context, m Meta, tenantID uint64) ([]domain.Collection, error)
-	CreateCollection(ctx context.Context, m Meta, tenantID uint64, uuid, name string) ([]domain.Collection, error)
+	Collections(ctx context.Context, m Meta, tenantID uint64) ([]CollectionRecord, error)
+	CreateCollection(ctx context.Context, m Meta, tenantID uint64, uuid, name string) ([]CollectionRecord, error)
+	RenameCollection(ctx context.Context, m Meta, tenantID uint64, uuid, name string) error
+	CollectionShares(ctx context.Context, m Meta, tenantID uint64, uuid string) ([]PersonRecord, error)
+	ShareCollection(ctx context.Context, m Meta, tenantID uint64, uuid, userUUID, permission string) ([]PersonRecord, error)
+	UnshareCollection(ctx context.Context, m Meta, tenantID uint64, uuid, userUUID string) error
+	Colleagues(ctx context.Context, m Meta, tenantID uint64) ([]PersonRecord, error)
 	DeleteCollection(ctx context.Context, m Meta, tenantID uint64, uuid string) error
 	SetCollectionTalent(ctx context.Context, m Meta, tenantID uint64, collectionUUID, talentUUID string, in bool) error
+}
+
+// CollectionRecord trae el nombre del dueño cifrado.
+type CollectionRecord struct {
+	domain.Collection
+	OwnerNameEnc []byte
+}
+
+// PersonRecord: usuario con nombre/correo cifrados (compartidos, directorio).
+type PersonRecord struct {
+	ID                string
+	NameEnc, EmailEnc []byte
+	Permission        string
+	CreatedAt         time.Time
 }
 
 // SyncRepository registra operaciones de la cola offline (idempotencia).

@@ -43,7 +43,12 @@ func (s *Server) talentRoutes(r chi.Router) {
 
 	r.With(read).Get("/collections", s.listCollections)
 	r.With(read).Post("/collections", s.createCollection)
+	r.With(read).Patch("/collections/{id}", s.renameCollection)
 	r.With(read).Delete("/collections/{id}", s.deleteCollection)
+	r.With(read).Get("/collections/{id}/shares", s.collectionShares)
+	r.With(read).Put("/collections/{id}/shares/{userId}", s.shareCollection)
+	r.With(read).Delete("/collections/{id}/shares/{userId}", s.unshareCollection)
+	r.With(read).Get("/colleagues", s.listColleagues)
 	r.With(read).Put("/collections/{id}/talents/{tid}", s.addToCollection)
 	r.With(read).Delete("/collections/{id}/talents/{tid}", s.removeFromCollection)
 }
@@ -375,4 +380,53 @@ func (s *Server) addToCollection(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) removeFromCollection(w http.ResponseWriter, r *http.Request) {
 	s.noContent(w, r, s.Talents.SetCollectionTalent(r.Context(), principal(r), chi.URLParam(r, "id"), chi.URLParam(r, "tid"), false))
+}
+
+func (s *Server) renameCollection(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Name string `json:"name"`
+	}
+	if err := decode(w, r, &in); err != nil {
+		s.writeErr(w, r, err)
+		return
+	}
+	s.noContent(w, r, s.Talents.RenameCollection(r.Context(), principal(r), chi.URLParam(r, "id"), in.Name))
+}
+
+func (s *Server) collectionShares(w http.ResponseWriter, r *http.Request) {
+	list, err := s.Talents.CollectionShares(r.Context(), principal(r), chi.URLParam(r, "id"))
+	if err != nil {
+		s.writeErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+func (s *Server) shareCollection(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Permission string `json:"permission"`
+	}
+	if err := decode(w, r, &in); err != nil {
+		s.writeErr(w, r, err)
+		return
+	}
+	list, err := s.Talents.ShareCollection(r.Context(), principal(r), s.clientIP(r), chi.URLParam(r, "id"), chi.URLParam(r, "userId"), in.Permission)
+	if err != nil {
+		s.writeErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+func (s *Server) unshareCollection(w http.ResponseWriter, r *http.Request) {
+	s.noContent(w, r, s.Talents.UnshareCollection(r.Context(), principal(r), s.clientIP(r), chi.URLParam(r, "id"), chi.URLParam(r, "userId")))
+}
+
+func (s *Server) listColleagues(w http.ResponseWriter, r *http.Request) {
+	list, err := s.Talents.Colleagues(r.Context(), principal(r))
+	if err != nil {
+		s.writeErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
 }

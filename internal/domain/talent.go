@@ -147,7 +147,26 @@ type Talent struct {
 }
 
 type Collection struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	TalentCount int    `json:"talentCount"`
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	TalentCount int       `json:"talentCount"`
+	Access      string    `json:"access"` // OWNER | EDIT | VIEW
+	OwnerID     string    `json:"ownerId"`
+	OwnerName   string    `json:"ownerName"`
+	ShareCount  int       `json:"shareCount"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
+type CollectionShare struct {
+	UserID     string    `json:"userId"`
+	Name       string    `json:"name"`
+	Email      string    `json:"email"`
+	Permission string    `json:"permission"`
+	CreatedAt  time.Time `json:"createdAt"`
+}
+
+type Colleague struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
 }

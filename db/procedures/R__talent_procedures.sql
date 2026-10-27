@@ -71,7 +71,8 @@ BEGIN
   END IF;
   IF p_grade_uuid IS NOT NULL AND p_grade_uuid <> '' THEN CALL sp_master_resolve(p_tenant_id, 'ACADEMIC_GRADE', p_grade_uuid, v_grade); END IF;
   IF p_collection_uuid IS NOT NULL AND p_collection_uuid <> '' THEN
-    SELECT id INTO v_coll FROM favorite_collection WHERE uuid = p_collection_uuid AND user_id = p_actor_id AND deleted_at IS NULL;
+    SELECT fc.id INTO v_coll FROM favorite_collection fc
+     WHERE fc.uuid = p_collection_uuid AND fc.tenant_id = p_tenant_id AND fc.deleted_at IS NULL AND (fc.user_id = p_actor_id OR EXISTS (SELECT 1 FROM favorite_collection_share sh WHERE sh.collection_id = fc.id AND sh.user_id = p_actor_id));
     IF v_coll IS NULL THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:NOT_FOUND'; END IF;
   END IF;
 
@@ -110,7 +111,7 @@ BEGIN
   SELECT t.uuid, t.first_name, t.last_name, t.second_last_name, t.headline, c.label_i18n AS country, t.city,
          t.avg_rating, pf.uuid AS photo_uuid, h.years AS years_experience,
          EXISTS (SELECT 1 FROM favorite_collection_talent ct JOIN favorite_collection fc ON fc.id = ct.collection_id
-                  WHERE ct.talent_id = t.id AND fc.user_id = p_actor_id AND fc.deleted_at IS NULL) AS is_favorite,
+                  WHERE ct.talent_id = t.id AND fc.deleted_at IS NULL AND (fc.user_id = p_actor_id OR EXISTS (SELECT 1 FROM favorite_collection_share sh WHERE sh.collection_id = fc.id AND sh.user_id = p_actor_id))) AS is_favorite,
          (SELECT JSON_ARRAYAGG(JSON_OBJECT('id', mi.uuid, 'label', mi.label_i18n, 'years', s.years))
             FROM talent_tech_skill s JOIN master_item mi ON mi.id = s.skill_item_id
            WHERE s.talent_id = t.id AND s.deleted_at IS NULL) AS skills,
@@ -190,7 +191,7 @@ BEGIN
    ORDER BY fo.created_at DESC;
 
   SELECT fc.uuid FROM favorite_collection_talent ct JOIN favorite_collection fc ON fc.id = ct.collection_id
-   WHERE ct.talent_id = v_id AND fc.user_id = p_actor_id AND fc.deleted_at IS NULL;
+   WHERE ct.talent_id = v_id AND fc.deleted_at IS NULL AND (fc.user_id = p_actor_id OR EXISTS (SELECT 1 FROM favorite_collection_share sh WHERE sh.collection_id = fc.id AND sh.user_id = p_actor_id));
 END $$
 
 -- ---------------------------------------------------------------------
@@ -578,58 +579,6 @@ BEGIN
                       cv_file_id = IF(cv_file_id = v_file, NULL, cv_file_id) WHERE id = v_talent;
     CALL sp_talent_touch(v_talent, p_actor_id);
     CALL sp_audit_insert(p_tenant_id, p_actor_id, NULL, 'DELETE', 'talent_file', p_uuid, NULL, p_ip);
-  END IF;
-END $$
-
--- ---------------------------------------------------------------------
--- Favoritos (colecciones por usuario)
--- ---------------------------------------------------------------------
-DROP PROCEDURE IF EXISTS sp_collection_list $$
-CREATE PROCEDURE sp_collection_list(IN p_actor_id BIGINT UNSIGNED, IN p_tenant_id BIGINT UNSIGNED)
-BEGIN
-  CALL sp_assert_actor(p_actor_id, p_tenant_id, 'talent.read');
-  SELECT c.uuid, c.name, (SELECT COUNT(*) FROM favorite_collection_talent ct JOIN talent t ON t.id = ct.talent_id AND t.deleted_at IS NULL
-                           WHERE ct.collection_id = c.id) AS talent_count
-    FROM favorite_collection c WHERE c.user_id = p_actor_id AND c.tenant_id = p_tenant_id AND c.deleted_at IS NULL ORDER BY c.name;
-END $$
-
-DROP PROCEDURE IF EXISTS sp_collection_create $$
-CREATE PROCEDURE sp_collection_create(IN p_actor_id BIGINT UNSIGNED, IN p_tenant_id BIGINT UNSIGNED, IN p_uuid CHAR(36), IN p_name VARCHAR(100))
-BEGIN
-  CALL sp_assert_actor(p_actor_id, p_tenant_id, 'talent.read');
-  SET p_name = TRIM(p_name);
-  IF p_name = '' OR CHAR_LENGTH(p_name) > 100 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:VALIDATION'; END IF;
-  IF NOT EXISTS (SELECT 1 FROM favorite_collection WHERE uuid = p_uuid) THEN
-    IF EXISTS (SELECT 1 FROM favorite_collection WHERE user_id = p_actor_id AND name = p_name AND deleted_at IS NULL) THEN
-      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:COLLECTION_EXISTS';
-    END IF;
-    INSERT INTO favorite_collection (uuid, tenant_id, user_id, name, created_by) VALUES (p_uuid, p_tenant_id, p_actor_id, p_name, p_actor_id);
-  END IF;
-  CALL sp_collection_list(p_actor_id, p_tenant_id);
-END $$
-
-DROP PROCEDURE IF EXISTS sp_collection_delete $$
-CREATE PROCEDURE sp_collection_delete(IN p_actor_id BIGINT UNSIGNED, IN p_tenant_id BIGINT UNSIGNED, IN p_uuid CHAR(36))
-BEGIN
-  CALL sp_assert_actor(p_actor_id, p_tenant_id, 'talent.read');
-  UPDATE favorite_collection SET deleted_at = NOW(3), deleted_by = p_actor_id
-   WHERE uuid = p_uuid AND user_id = p_actor_id AND deleted_at IS NULL;
-END $$
-
-DROP PROCEDURE IF EXISTS sp_collection_set_talent $$
-CREATE PROCEDURE sp_collection_set_talent(IN p_actor_id BIGINT UNSIGNED, IN p_tenant_id BIGINT UNSIGNED,
-  IN p_collection_uuid CHAR(36), IN p_talent_uuid CHAR(36), IN p_in TINYINT(1))
-BEGIN
-  DECLARE v_coll BIGINT UNSIGNED;
-  DECLARE v_talent BIGINT UNSIGNED;
-  CALL sp_assert_actor(p_actor_id, p_tenant_id, 'talent.read');
-  CALL sp_talent_resolve(p_tenant_id, p_talent_uuid, v_talent);
-  SELECT id INTO v_coll FROM favorite_collection WHERE uuid = p_collection_uuid AND user_id = p_actor_id AND deleted_at IS NULL;
-  IF v_coll IS NULL THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:NOT_FOUND'; END IF;
-  IF p_in = 1 THEN
-    INSERT IGNORE INTO favorite_collection_talent (collection_id, talent_id, created_by) VALUES (v_coll, v_talent, p_actor_id);
-  ELSE
-    DELETE FROM favorite_collection_talent WHERE collection_id = v_coll AND talent_id = v_talent;
   END IF;
 END $$
 

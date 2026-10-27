@@ -348,12 +348,12 @@ func (r TalentRepo) DeleteFile(ctx context.Context, m ports.Meta, tenantID uint6
 	return r.exec(ctx, "sp_talent_file_delete", m.ActorID, tenantID, uuid, nullStr(m.IP))
 }
 
-func scanCollections(rs *resultSets) ([]domain.Collection, error) {
-	out := []domain.Collection{}
+func scanCollections(rs *resultSets) ([]ports.CollectionRecord, error) {
+	out := []ports.CollectionRecord{}
 	for rs.Next() {
 		if err := rs.Each(func(scan func(...any) error) error {
-			var c domain.Collection
-			err := scan(&c.ID, &c.Name, &c.TalentCount)
+			var c ports.CollectionRecord
+			err := scan(&c.ID, &c.Name, &c.TalentCount, &c.Access, &c.OwnerID, &c.OwnerNameEnc, &c.ShareCount, &c.UpdatedAt)
 			out = append(out, c)
 			return err
 		}); err != nil {
@@ -363,7 +363,27 @@ func scanCollections(rs *resultSets) ([]domain.Collection, error) {
 	return out, rs.Close()
 }
 
-func (r TalentRepo) Collections(ctx context.Context, m ports.Meta, tenantID uint64) ([]domain.Collection, error) {
+func scanPeople(rs *resultSets, withPerm bool) ([]ports.PersonRecord, error) {
+	out := []ports.PersonRecord{}
+	for rs.Next() {
+		if err := rs.Each(func(scan func(...any) error) error {
+			var p ports.PersonRecord
+			var err error
+			if withPerm {
+				err = scan(&p.ID, &p.NameEnc, &p.EmailEnc, &p.Permission, &p.CreatedAt)
+			} else {
+				err = scan(&p.ID, &p.NameEnc, &p.EmailEnc)
+			}
+			out = append(out, p)
+			return err
+		}); err != nil {
+			return nil, err
+		}
+	}
+	return out, rs.Close()
+}
+
+func (r TalentRepo) Collections(ctx context.Context, m ports.Meta, tenantID uint64) ([]ports.CollectionRecord, error) {
 	rs, err := r.call(ctx, "sp_collection_list", m.ActorID, tenantID)
 	if err != nil {
 		return nil, err
@@ -371,12 +391,16 @@ func (r TalentRepo) Collections(ctx context.Context, m ports.Meta, tenantID uint
 	return scanCollections(rs)
 }
 
-func (r TalentRepo) CreateCollection(ctx context.Context, m ports.Meta, tenantID uint64, uuid, name string) ([]domain.Collection, error) {
+func (r TalentRepo) CreateCollection(ctx context.Context, m ports.Meta, tenantID uint64, uuid, name string) ([]ports.CollectionRecord, error) {
 	rs, err := r.call(ctx, "sp_collection_create", m.ActorID, tenantID, uuid, name)
 	if err != nil {
 		return nil, err
 	}
 	return scanCollections(rs)
+}
+
+func (r TalentRepo) RenameCollection(ctx context.Context, m ports.Meta, tenantID uint64, uuid, name string) error {
+	return r.exec(ctx, "sp_collection_rename", m.ActorID, tenantID, uuid, name)
 }
 
 func (r TalentRepo) DeleteCollection(ctx context.Context, m ports.Meta, tenantID uint64, uuid string) error {
@@ -385,6 +409,34 @@ func (r TalentRepo) DeleteCollection(ctx context.Context, m ports.Meta, tenantID
 
 func (r TalentRepo) SetCollectionTalent(ctx context.Context, m ports.Meta, tenantID uint64, collectionUUID, talentUUID string, in bool) error {
 	return r.exec(ctx, "sp_collection_set_talent", m.ActorID, tenantID, collectionUUID, talentUUID, in)
+}
+
+func (r TalentRepo) CollectionShares(ctx context.Context, m ports.Meta, tenantID uint64, uuid string) ([]ports.PersonRecord, error) {
+	rs, err := r.call(ctx, "sp_collection_shares", m.ActorID, tenantID, uuid)
+	if err != nil {
+		return nil, err
+	}
+	return scanPeople(rs, true)
+}
+
+func (r TalentRepo) ShareCollection(ctx context.Context, m ports.Meta, tenantID uint64, uuid, userUUID, permission string) ([]ports.PersonRecord, error) {
+	rs, err := r.call(ctx, "sp_collection_share", m.ActorID, tenantID, uuid, userUUID, permission, nullStr(m.IP))
+	if err != nil {
+		return nil, err
+	}
+	return scanPeople(rs, true)
+}
+
+func (r TalentRepo) UnshareCollection(ctx context.Context, m ports.Meta, tenantID uint64, uuid, userUUID string) error {
+	return r.exec(ctx, "sp_collection_unshare", m.ActorID, tenantID, uuid, userUUID, nullStr(m.IP))
+}
+
+func (r TalentRepo) Colleagues(ctx context.Context, m ports.Meta, tenantID uint64) ([]ports.PersonRecord, error) {
+	rs, err := r.call(ctx, "sp_tenant_colleagues", m.ActorID, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	return scanPeople(rs, false)
 }
 
 // ---------------- Sincronización offline ----------------

@@ -474,14 +474,48 @@ func (s *TalentService) DeleteFile(ctx context.Context, p *domain.Principal, ip,
 	return s.Repo.DeleteFile(ctx, meta(p, ip), tid, id)
 }
 
-// ---------------------------------------------------------------- Favoritos
+// ---------------------------------------------------------------- Favoritos (compartibles)
+
+func (s *TalentService) collections(recs []ports.CollectionRecord) ([]domain.Collection, error) {
+	out := make([]domain.Collection, 0, len(recs))
+	for _, r := range recs {
+		c := r.Collection
+		name, err := s.Cipher.Decrypt(r.OwnerNameEnc)
+		if err != nil {
+			return nil, err
+		}
+		c.OwnerName = name
+		out = append(out, c)
+	}
+	return out, nil
+}
+
+func (s *TalentService) people(recs []ports.PersonRecord) ([]domain.CollectionShare, error) {
+	out := make([]domain.CollectionShare, 0, len(recs))
+	for _, r := range recs {
+		name, err := s.Cipher.Decrypt(r.NameEnc)
+		if err != nil {
+			return nil, err
+		}
+		email, err := s.Cipher.Decrypt(r.EmailEnc)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, domain.CollectionShare{UserID: r.ID, Name: name, Email: email, Permission: r.Permission, CreatedAt: r.CreatedAt})
+	}
+	return out, nil
+}
 
 func (s *TalentService) Collections(ctx context.Context, p *domain.Principal) ([]domain.Collection, error) {
 	tid, err := tenantOf(p)
 	if err != nil {
 		return nil, err
 	}
-	return s.Repo.Collections(ctx, meta(p, ""), tid)
+	recs, err := s.Repo.Collections(ctx, meta(p, ""), tid)
+	if err != nil {
+		return nil, err
+	}
+	return s.collections(recs)
 }
 
 func (s *TalentService) CreateCollection(ctx context.Context, p *domain.Principal, id, name string) ([]domain.Collection, error) {
@@ -492,13 +526,31 @@ func (s *TalentService) CreateCollection(ctx context.Context, p *domain.Principa
 	if id, err = idOrNew(id); err != nil {
 		return nil, err
 	}
-	return s.Repo.CreateCollection(ctx, meta(p, ""), tid, id, name)
+	recs, err := s.Repo.CreateCollection(ctx, meta(p, ""), tid, id, name)
+	if err != nil {
+		return nil, err
+	}
+	return s.collections(recs)
+}
+
+func (s *TalentService) RenameCollection(ctx context.Context, p *domain.Principal, id, name string) error {
+	tid, err := tenantOf(p)
+	if err != nil {
+		return err
+	}
+	if !validUUID(id) {
+		return domain.ErrNotFound
+	}
+	return s.Repo.RenameCollection(ctx, meta(p, ""), tid, id, name)
 }
 
 func (s *TalentService) DeleteCollection(ctx context.Context, p *domain.Principal, id string) error {
 	tid, err := tenantOf(p)
 	if err != nil {
 		return err
+	}
+	if !validUUID(id) {
+		return domain.ErrNotFound
 	}
 	return s.Repo.DeleteCollection(ctx, meta(p, ""), tid, id)
 }
@@ -512,4 +564,65 @@ func (s *TalentService) SetCollectionTalent(ctx context.Context, p *domain.Princ
 		return domain.ErrNotFound
 	}
 	return s.Repo.SetCollectionTalent(ctx, meta(p, ""), tid, collectionID, talentID, in)
+}
+
+func (s *TalentService) CollectionShares(ctx context.Context, p *domain.Principal, id string) ([]domain.CollectionShare, error) {
+	tid, err := tenantOf(p)
+	if err != nil {
+		return nil, err
+	}
+	if !validUUID(id) {
+		return nil, domain.ErrNotFound
+	}
+	recs, err := s.Repo.CollectionShares(ctx, meta(p, ""), tid, id)
+	if err != nil {
+		return nil, err
+	}
+	return s.people(recs)
+}
+
+func (s *TalentService) ShareCollection(ctx context.Context, p *domain.Principal, ip, id, userID, permission string) ([]domain.CollectionShare, error) {
+	tid, err := tenantOf(p)
+	if err != nil {
+		return nil, err
+	}
+	if !validUUID(id) || !validUUID(userID) {
+		return nil, domain.ErrValidation
+	}
+	recs, err := s.Repo.ShareCollection(ctx, meta(p, ip), tid, id, userID, strings.ToUpper(permission))
+	if err != nil {
+		return nil, err
+	}
+	return s.people(recs)
+}
+
+func (s *TalentService) UnshareCollection(ctx context.Context, p *domain.Principal, ip, id, userID string) error {
+	tid, err := tenantOf(p)
+	if err != nil {
+		return err
+	}
+	if !validUUID(id) || !validUUID(userID) {
+		return domain.ErrNotFound
+	}
+	return s.Repo.UnshareCollection(ctx, meta(p, ip), tid, id, userID)
+}
+
+func (s *TalentService) Colleagues(ctx context.Context, p *domain.Principal) ([]domain.Colleague, error) {
+	tid, err := tenantOf(p)
+	if err != nil {
+		return nil, err
+	}
+	recs, err := s.Repo.Colleagues(ctx, meta(p, ""), tid)
+	if err != nil {
+		return nil, err
+	}
+	people, err := s.people(recs)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Colleague, 0, len(people))
+	for _, x := range people {
+		out = append(out, domain.Colleague{ID: x.UserID, Name: x.Name, Email: x.Email})
+	}
+	return out, nil
 }

@@ -85,6 +85,27 @@ check "filtrar por colección" "$(srch "$R" "{\"collectionId\":\"$C\"}")" 200
 check "solo ese talento" "$(body | jget .total)" 1
 check "otro usuario no usa mi colección" "$(srch "$A" "{\"collectionId\":\"$C\"}")" 404
 
+echo "== Favoritos compartidos"
+code -H "$A" $API/api/v1/auth/me >/dev/null; AID=$(body | jget .id)
+check "directorio de compañeros" "$(code -H "$R" $API/api/v1/tenant/colleagues)" 200
+check "el admin aparece en el directorio" "$(body | jget ".some(u=>u.id==='$AID')")" true
+check "compartir con permiso VER" "$(code -X PUT -H "$R" -H "$J" -d '{"permission":"VIEW"}' $API/api/v1/tenant/collections/$C/shares/$AID)" 200
+code -H "$A" $API/api/v1/tenant/collections >/dev/null
+check "el compartido ve la colección (VIEW)" "$(body | jget ".find(c=>c.id==='$C').access")" VIEW
+check "el compartido filtra por la colección" "$(srch "$A" "{\"collectionId\":\"$C\"}")" 200
+check "ve sus talentos" "$(body | jget .total)" 1
+check "VER no permite quitar talentos" "$(code -X DELETE -H "$A" $API/api/v1/tenant/collections/$C/talents/$T)" 403
+check "el compartido no puede re-compartir" "$(code -X PUT -H "$A" -H "$J" -d '{"permission":"EDIT"}' $API/api/v1/tenant/collections/$C/shares/$AID)" 403
+check "el compartido no puede renombrar" "$(code -X PATCH -H "$A" -H "$J" -d '{"name":"x"}' $API/api/v1/tenant/collections/$C)" 403
+check "el dueño sube a EDITAR" "$(code -X PUT -H "$R" -H "$J" -d '{"permission":"EDIT"}' $API/api/v1/tenant/collections/$C/shares/$AID)" 200
+check "EDITAR permite quitar talento" "$(code -X DELETE -H "$A" $API/api/v1/tenant/collections/$C/talents/$T)" 204
+check "y volver a agregarlo" "$(code -X PUT -H "$A" $API/api/v1/tenant/collections/$C/talents/$T)" 204
+check "el dueño ve con quién compartió" "$(code -H "$R" $API/api/v1/tenant/collections/$C/shares)" 200
+check "1 persona" "$(body | jget .length)" 1
+check "el compartido sale de la colección" "$(code -X DELETE -H "$A" $API/api/v1/tenant/collections/$C)" 204
+check "ya no la ve" "$(srch "$A" "{\"collectionId\":\"$C\"}")" 404
+check "la colección sigue existiendo para el dueño" "$(srch "$R" "{\"collectionId\":\"$C\"}")" 200
+
 echo "== Archivos (cifrados en el volumen)"
 mkdir -p tmp
 printf '%%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%%%EOF\n' > tmp/cv_smoke.pdf
@@ -117,6 +138,7 @@ O="Authorization: Bearer $(body | jget .accessToken)"
 check "otro tenant no ve el talento" "$(code -H "$O" $API/api/v1/tenant/talents/$T)" 404
 check "otro tenant no descarga el CV" "$(code -H "$O" $API/api/v1/tenant/talents/files/$FID)" 404
 check "otro tenant no modifica el talento" "$(code -X PUT -H "$O" -H "$J" -d '{"firstName":"Hack","lastName":"X"}' $API/api/v1/tenant/talents/$T)" 403
+check "no se comparte con usuarios de otro tenant" "$(code -X PUT -H "$R" -H "$J" -d "{\"permission\":\"VIEW\"}" $API/api/v1/tenant/collections/$C/shares/$(curl -s -H "$O" $API/api/v1/auth/me | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>console.log(JSON.parse(d).id))"))" 422
 check "otro tenant no ve en búsqueda" "$(srch "$O" "{\"search\":\"quispe\"}")" 200
 check "lista vacía" "$(body | jget .total)" 0
 code -X PATCH -H "Authorization: Bearer $SA" -H "$J" -d '{"status":"CANCELLED"}' $API/api/v1/platform/tenants/$OID/status >/dev/null
