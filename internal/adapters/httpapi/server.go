@@ -30,6 +30,7 @@ type Deps struct {
 	Talents      *app.TalentService
 	Blacklist    *app.BlacklistService
 	Interviews   *app.InterviewService
+	Home         *app.HomeService
 	Sync         ports.SyncRepository
 	Audit        ports.AuditRepository
 	Translations ports.TranslationRepository
@@ -99,6 +100,7 @@ func (s *Server) Handler() http.Handler {
 				r.With(s.requirePerm("tenant.apikeys.request")).Post("/api-keys/{id}/revoke", s.revokeApiKey)
 				r.With(s.requirePerm("tenant.translations.manage")).Put("/translations", s.upsertTranslation)
 				r.With(s.requirePerm("tenant.audit.read")).Get("/audit", s.listAudit)
+				r.With(s.requirePerm("talent.read")).Get("/home", s.homeSummary)
 				r.Group(s.talentRoutes)
 				r.Group(s.blacklistRoutes)
 				r.Group(s.interviewRoutes)

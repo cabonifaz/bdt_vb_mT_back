@@ -68,6 +68,7 @@ func Build(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, erro
 		Sync:         mysql.SyncRepo{Store: store},
 		Blacklist:    &app.BlacklistService{Repo: mysql.BlacklistRepo{Store: store}, Cipher: cipher},
 		Interviews:   &app.InterviewService{Repo: mysql.InterviewRepo{Store: store}, Cipher: cipher, Storage: files, Timezone: tz},
+		Home:         &app.HomeService{Repo: mysql.HomeRepo{Store: store}, Timezone: tz},
 		Audit:        mysql.AuditRepo{Store: store},
 		Translations: mysql.TranslationRepo{Store: store},
 		Tokens:       issuer,
