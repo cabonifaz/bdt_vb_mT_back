@@ -110,42 +110,46 @@ type TalentFile struct {
 }
 
 type Talent struct {
-	ID             string             `json:"id"`
-	FirstName      string             `json:"firstName"`
-	LastName       string             `json:"lastName"`
-	SecondLastName *string            `json:"secondLastName,omitempty"`
-	Headline       *string            `json:"headline,omitempty"`
-	DocTypeID      *string            `json:"docTypeId,omitempty"`
-	DocNumber      string             `json:"docNumber,omitempty"`
-	Email          string             `json:"email,omitempty"`
-	Phone          string             `json:"phone,omitempty"`
-	BirthDate      string             `json:"birthDate,omitempty"` // YYYY-MM-DD (cifrada en BD)
-	CountryID      *string            `json:"countryId,omitempty"`
-	Country        json.RawMessage    `json:"country,omitempty"`
-	City           *string            `json:"city,omitempty"`
-	LinkedinURL    *string            `json:"linkedinUrl,omitempty"`
-	GithubURL      *string            `json:"githubUrl,omitempty"`
-	Summary        *string            `json:"summary,omitempty"`
-	AvailabilityID *string            `json:"availabilityId,omitempty"`
-	HasEquipment   *bool              `json:"hasEquipment,omitempty"`
-	Rates          *Rates             `json:"rates,omitempty"`
-	CanSeeRates    bool               `json:"canSeeRates"`
-	PhotoID        *string            `json:"photoId,omitempty"`
-	CvID           *string            `json:"cvId,omitempty"`
-	AvgRating      *float64           `json:"avgRating,omitempty"`
-	Status         string             `json:"status"`
-	Source         string             `json:"source"`
-	Version        int                `json:"version"`
-	CreatedAt      time.Time          `json:"createdAt"`
-	UpdatedAt      time.Time          `json:"updatedAt"`
-	TechSkills     []TalentTechSkill  `json:"techSkills"`
-	SoftSkills     []TalentSoftSkill  `json:"softSkills"`
-	Experiences    []TalentExperience `json:"experiences"`
-	Educations     []TalentEducation  `json:"educations"`
-	Languages      []TalentLanguage   `json:"languages"`
-	Feedback       []TalentFeedback   `json:"feedback"`
-	Files          []TalentFile       `json:"files"`
-	Collections    []string           `json:"collections"`
+	ID             string          `json:"id"`
+	FirstName      string          `json:"firstName"`
+	LastName       string          `json:"lastName"`
+	SecondLastName *string         `json:"secondLastName,omitempty"`
+	Headline       *string         `json:"headline,omitempty"`
+	DocTypeID      *string         `json:"docTypeId,omitempty"`
+	DocNumber      string          `json:"docNumber,omitempty"`
+	Email          string          `json:"email,omitempty"`
+	Phone          string          `json:"phone,omitempty"`
+	BirthDate      string          `json:"birthDate,omitempty"` // YYYY-MM-DD (cifrada en BD)
+	CountryID      *string         `json:"countryId,omitempty"`
+	Country        json.RawMessage `json:"country,omitempty"`
+	City           *string         `json:"city,omitempty"`
+	// procedencia (país y ciudad de origen); country/city = residencia
+	OriginCountryID *string            `json:"originCountryId,omitempty"`
+	OriginCountry   json.RawMessage    `json:"originCountry,omitempty"`
+	OriginCity      *string            `json:"originCity,omitempty"`
+	LinkedinURL     *string            `json:"linkedinUrl,omitempty"`
+	GithubURL       *string            `json:"githubUrl,omitempty"`
+	Summary         *string            `json:"summary,omitempty"`
+	AvailabilityID  *string            `json:"availabilityId,omitempty"`
+	HasEquipment    *bool              `json:"hasEquipment,omitempty"`
+	Rates           *Rates             `json:"rates,omitempty"`
+	CanSeeRates     bool               `json:"canSeeRates"`
+	PhotoID         *string            `json:"photoId,omitempty"`
+	CvID            *string            `json:"cvId,omitempty"`
+	AvgRating       *float64           `json:"avgRating,omitempty"`
+	Status          string             `json:"status"`
+	Source          string             `json:"source"`
+	Version         int                `json:"version"`
+	CreatedAt       time.Time          `json:"createdAt"`
+	UpdatedAt       time.Time          `json:"updatedAt"`
+	TechSkills      []TalentTechSkill  `json:"techSkills"`
+	SoftSkills      []TalentSoftSkill  `json:"softSkills"`
+	Experiences     []TalentExperience `json:"experiences"`
+	Educations      []TalentEducation  `json:"educations"`
+	Languages       []TalentLanguage   `json:"languages"`
+	Feedback        []TalentFeedback   `json:"feedback"`
+	Files           []TalentFile       `json:"files"`
+	Collections     []string           `json:"collections"`
 }
 
 type Collection struct {

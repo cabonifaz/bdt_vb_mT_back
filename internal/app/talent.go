@@ -134,6 +134,8 @@ type TalentInput struct {
 	BirthDate       string        `json:"birthDate"`
 	CountryID       *string       `json:"countryId"`
 	City            *string       `json:"city"`
+	OriginCountryID *string       `json:"originCountryId"`
+	OriginCity      *string       `json:"originCity"`
 	LinkedinURL     *string       `json:"linkedinUrl"`
 	GithubURL       *string       `json:"githubUrl"`
 	Summary         *string       `json:"summary"`
@@ -154,19 +156,19 @@ func (s *TalentService) Save(ctx context.Context, p *domain.Principal, ip string
 	}
 	in.FirstName, in.LastName = strings.TrimSpace(in.FirstName), strings.TrimSpace(in.LastName)
 	if in.FirstName == "" || in.LastName == "" || utf8.RuneCountInString(in.FirstName) > 100 || utf8.RuneCountInString(in.LastName) > 100 ||
-		!maxLen(in.SecondLastName, 100) || !maxLen(in.Headline, 150) || !maxLen(in.City, 120) ||
+		!maxLen(in.SecondLastName, 100) || !maxLen(in.Headline, 150) || !maxLen(in.City, 120) || !maxLen(in.OriginCity, 120) ||
 		!maxLen(in.Summary, 5000) || !maxLen(in.LinkedinURL, 300) || !maxLen(in.GithubURL, 300) ||
 		len(in.DocNumber) > 30 || len(in.Phone) > 30 {
 		return nil, domain.ErrValidation
 	}
-	for _, ref := range []*string{in.DocTypeID, in.CountryID, in.AvailabilityID} {
+	for _, ref := range []*string{in.DocTypeID, in.CountryID, in.OriginCountryID, in.AvailabilityID} {
 		if ref != nil && *ref != "" && !validUUID(*ref) {
 			return nil, domain.ErrValidation
 		}
 	}
 	w := ports.TalentWrite{
 		UUID: id, FirstName: in.FirstName, LastName: in.LastName, SecondLastName: in.SecondLastName, Headline: in.Headline,
-		DocTypeID: in.DocTypeID, CountryID: in.CountryID, City: in.City, Linkedin: in.LinkedinURL, Github: in.GithubURL,
+		DocTypeID: in.DocTypeID, CountryID: in.CountryID, City: in.City, OriginCountryID: in.OriginCountryID, OriginCity: in.OriginCity, Linkedin: in.LinkedinURL, Github: in.GithubURL,
 		Summary: in.Summary, AvailabilityID: in.AvailabilityID, HasEquipment: in.HasEquipment, ExpectedVersion: in.ExpectedVersion,
 		Source: "MANUAL",
 	}

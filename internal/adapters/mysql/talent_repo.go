@@ -106,12 +106,12 @@ func (r TalentRepo) Get(ctx context.Context, m ports.Meta, tenantID uint64, uuid
 	t.Languages, t.Feedback, t.Files, t.Collections = []domain.TalentLanguage{}, []domain.TalentFeedback{}, []domain.TalentFile{}, []string{}
 
 	rs.Next()
-	var second, headline, docType, countryID, city, linkedin, github, summary, availability, photo, cv sql.NullString
-	var country []byte
+	var second, headline, docType, countryID, city, originID, originCity, linkedin, github, summary, availability, photo, cv sql.NullString
+	var country, origin []byte
 	var hasEq sql.NullBool
 	var rating sql.NullFloat64
 	if err := rs.One(&t.ID, &t.FirstName, &t.LastName, &second, &headline, &docType, &rec.DocEnc, &rec.EmailEnc, &rec.PhoneEnc, &rec.BirthEnc,
-		&countryID, &country, &city, &linkedin, &github, &summary, &availability, &hasEq, &rec.RatesEnc, &t.CanSeeRates,
+		&countryID, &country, &city, &originID, &origin, &originCity, &linkedin, &github, &summary, &availability, &hasEq, &rec.RatesEnc, &t.CanSeeRates,
 		&photo, &cv, &rating, &t.Status, &t.Source, &t.Version, &t.CreatedAt, &t.UpdatedAt); err != nil {
 		return nil, err
 	}
@@ -120,6 +120,10 @@ func (r TalentRepo) Get(ctx context.Context, m ports.Meta, tenantID uint64, uuid
 	t.PhotoID, t.CvID, t.AvgRating = strPtr(photo), strPtr(cv), fPtr(rating)
 	if len(country) > 0 {
 		t.Country = json.RawMessage(country)
+	}
+	t.OriginCountryID, t.OriginCity = strPtr(originID), strPtr(originCity)
+	if len(origin) > 0 {
+		t.OriginCountry = json.RawMessage(origin)
 	}
 	if hasEq.Valid {
 		t.HasEquipment = &hasEq.Bool
@@ -213,7 +217,7 @@ func (r TalentRepo) Upsert(ctx context.Context, m ports.Meta, tenantID uint64, w
 	}
 	rs, err := r.call(ctx, "sp_talent_upsert", m.ActorID, tenantID, w.UUID, w.FirstName, w.LastName, optStr(w.SecondLastName),
 		optStr(w.Headline), optStr(w.DocTypeID), optBytes(w.DocEnc), optStr(w.DocBidx), optBytes(w.EmailEnc), optStr(w.EmailBidx),
-		optBytes(w.PhoneEnc), optBytes(w.BirthEnc), optStr(w.CountryID), optStr(w.City), optStr(w.Linkedin), optStr(w.Github), optStr(w.Summary),
+		optBytes(w.PhoneEnc), optBytes(w.BirthEnc), optStr(w.CountryID), optStr(w.City), optStr(w.OriginCountryID), optStr(w.OriginCity), optStr(w.Linkedin), optStr(w.Github), optStr(w.Summary),
 		optStr(w.AvailabilityID), optBool(w.HasEquipment), optBytes(w.RatesEnc), w.SetRates, ev, nullStr(w.Source), nullStr(m.IP))
 	if err != nil {
 		return nil, err

@@ -31,6 +31,7 @@ type TalentWrite struct {
 	EmailBidx                           *string
 	PhoneEnc, BirthEnc                  []byte
 	CountryID, City, Linkedin, Github   *string
+	OriginCountryID, OriginCity         *string
 	Summary, AvailabilityID             *string
 	HasEquipment                        *bool
 	RatesEnc                            []byte
