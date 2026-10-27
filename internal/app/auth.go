@@ -15,7 +15,9 @@ import (
 )
 
 type AuthConfig struct {
-	RefreshTTL  time.Duration
+	RefreshTTL  time.Duration // sesión normal (vencimiento deslizante)
+	RememberTTL time.Duration // sesión con "Recordarme"
+	ReuseGrace  int           // segundos de tolerancia a renovaciones simultáneas
 	MaxAttempts int
 	LockMinutes int
 }
@@ -33,13 +35,14 @@ type Session struct {
 	ExpiresAt    time.Time         `json:"expiresAt"`
 	RefreshToken string            `json:"-"`
 	RefreshExp   time.Time         `json:"-"`
+	Remember     bool              `json:"-"`
 	User         *domain.Principal `json:"-"`
 }
 
 type Client struct{ IP, UserAgent string }
 
 // Login: tenantSlug vacío = acceso de plataforma (Super Admin).
-func (s *AuthService) Login(ctx context.Context, tenantSlug, email, password string, c Client) (*Session, error) {
+func (s *AuthService) Login(ctx context.Context, tenantSlug, email, password string, remember bool, c Client) (*Session, error) {
 	email = strings.TrimSpace(email)
 	if email == "" || password == "" || len(password) > 256 {
 		return nil, domain.ErrInvalidCredentials
@@ -71,28 +74,31 @@ func (s *AuthService) Login(ctx context.Context, tenantSlug, email, password str
 	if u.TenantStatus != "ACTIVE" {
 		return nil, domain.ErrTenantInactive
 	}
-	return s.newSession(ctx, u.ID, uuid.NewString(), c)
+	return s.newSession(ctx, u.ID, uuid.NewString(), remember, c)
 }
 
-func (s *AuthService) newSession(ctx context.Context, userID uint64, family string, c Client) (*Session, error) {
+func (s *AuthService) newSession(ctx context.Context, userID uint64, family string, remember bool, c Client) (*Session, error) {
 	p, err := s.Principal(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 	refresh := tokens.Random(32)
 	exp := time.Now().Add(s.Cfg.RefreshTTL)
-	if err := s.Repo.CreateSession(ctx, uuid.NewString(), userID, tokens.Hash(refresh), family, exp, c.IP, c.UserAgent); err != nil {
+	if remember {
+		exp = time.Now().Add(s.Cfg.RememberTTL)
+	}
+	if err := s.Repo.CreateSession(ctx, uuid.NewString(), userID, tokens.Hash(refresh), family, remember, exp, c.IP, c.UserAgent); err != nil {
 		return nil, err
 	}
-	return s.issue(p, refresh, exp)
+	return s.issue(p, refresh, exp, remember)
 }
 
-func (s *AuthService) issue(p *domain.Principal, refresh string, refreshExp time.Time) (*Session, error) {
+func (s *AuthService) issue(p *domain.Principal, refresh string, refreshExp time.Time, remember bool) (*Session, error) {
 	at, atExp, err := s.Tokens.IssueAccess(p)
 	if err != nil {
 		return nil, err
 	}
-	return &Session{AccessToken: at, ExpiresAt: atExp, RefreshToken: refresh, RefreshExp: refreshExp, User: p}, nil
+	return &Session{AccessToken: at, ExpiresAt: atExp, RefreshToken: refresh, RefreshExp: refreshExp, Remember: remember, User: p}, nil
 }
 
 // Refresh rota el refresh token (uso único). Reutilizar uno viejo revoca toda la familia.
@@ -101,8 +107,9 @@ func (s *AuthService) Refresh(ctx context.Context, refresh string, c Client) (*S
 		return nil, domain.ErrUnauthorized
 	}
 	next := tokens.Random(32)
-	exp := time.Now().Add(s.Cfg.RefreshTTL)
-	uid, err := s.Repo.RotateSession(ctx, tokens.Hash(refresh), uuid.NewString(), tokens.Hash(next), exp, c.IP, c.UserAgent)
+	now := time.Now()
+	uid, remember, exp, err := s.Repo.RotateSession(ctx, tokens.Hash(refresh), uuid.NewString(), tokens.Hash(next),
+		now.Add(s.Cfg.RefreshTTL), now.Add(s.Cfg.RememberTTL), s.Cfg.ReuseGrace, c.IP, c.UserAgent)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +117,7 @@ func (s *AuthService) Refresh(ctx context.Context, refresh string, c Client) (*S
 	if err != nil {
 		return nil, err
 	}
-	return s.issue(p, next, exp)
+	return s.issue(p, next, exp, remember)
 }
 
 func (s *AuthService) Logout(ctx context.Context, refresh string) error {

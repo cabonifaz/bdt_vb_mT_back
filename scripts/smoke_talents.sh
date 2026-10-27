@@ -9,6 +9,7 @@ check() { if [ "$2" = "$3" ]; then echo "  OK   $1"; pass=$((pass+1)); else echo
 code() { curl -s -o /tmp/st_body -w '%{http_code}' "$@"; }
 body() { cat /tmp/st_body; }
 jget() { node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const o=JSON.parse(d);const v=eval('o'+process.argv[1]);console.log(typeof v==='object'?JSON.stringify(v):(v??''))})" "$1"; }
+srch() { code -X POST -H "$1" -H "$J" -d "$2" $API/api/v1/tenant/talents/search; }
 uuid() { node -e "console.log(crypto.randomUUID())"; }
 
 # --- preparar: admin y reclutador de Fractal (invitados por el SA)
@@ -61,27 +62,28 @@ check "reclutador NO ve tarifas" "$(body | jget .rates)" ""
 check "admin no puede editar feedback ajeno" "$(code -X PUT -H "$A" -H "$J" -d "{\"id\":\"$FB\",\"stars\":1,\"comment\":\"x\"}" $API/api/v1/tenant/talents/$T/feedback)" 403
 
 echo "== Búsqueda"
-check "buscar por nombre" "$(code -H "$R" "$API/api/v1/tenant/talents?search=quispe")" 200
+check "buscar por nombre" "$(srch "$R" "{\"search\":\"quispe\"}")" 200
 check "encontrado" "$(body | jget ".items.some(i=>i.id==='$T')")" true
-check "filtro skills Java+React" "$(code -H "$R" "$API/api/v1/tenant/talents?skills=$JAVA,$REACT")" 200
+check "filtro skills Java+React" "$(srch "$R" "{\"skills\":[\"$JAVA\",\"$REACT\"]}")" 200
 check "encontrado con ambas" "$(body | jget ".items.some(i=>i.id==='$T')")" true
-check "filtro inglés intermedio+" "$(code -H "$R" "$API/api/v1/tenant/talents?englishLevel=INTERMEDIATE&search=quispe")" 200
+check "filtro inglés intermedio+" "$(srch "$R" "{\"englishLevel\":\"INTERMEDIATE\",\"search\":\"quispe\"}")" 200
 check "incluido (avanzado >= intermedio)" "$(body | jget ".items.some(i=>i.id==='$T')")" true
-check "filtro inglés nativo" "$(code -H "$R" "$API/api/v1/tenant/talents?englishLevel=NATIVE&search=quispe")" 200
+check "filtro inglés nativo" "$(srch "$R" "{\"englishLevel\":\"NATIVE\",\"search\":\"quispe\"}")" 200
 check "excluido" "$(body | jget ".items.some(i=>i.id==='$T')")" false
-check "filtro años >= 5" "$(code -H "$R" "$API/api/v1/tenant/talents?minYears=5&search=quispe")" 200
+check "filtro años >= 5" "$(srch "$R" "{\"minYears\":5,\"search\":\"quispe\"}")" 200
 check "incluido por experiencia" "$(body | jget ".items.some(i=>i.id==='$T')")" true
-check "filtro educación" "$(code -H "$R" "$API/api/v1/tenant/talents?education=sistemas&gradeId=$DEG&search=quispe")" 200
+check "filtro educación" "$(srch "$R" "{\"education\":\"sistemas\",\"gradeId\":\"$DEG\",\"search\":\"quispe\"}")" 200
 check "incluido por educación" "$(body | jget ".items.some(i=>i.id==='$T')")" true
-check "uuid de skill inválido" "$(code -H "$R" "$API/api/v1/tenant/talents?skills=1%20OR%201=1")" 422
+check "uuid de skill inválido" "$(srch "$R" "{\"skills\":[\"1 OR 1\"]}")" 422
+check "GET con filtros en la URL ya no existe" "$(code -H "$R" "$API/api/v1/tenant/talents?search=quispe")" 405
 
 echo "== Favoritos"
 C=$(uuid)
 check "crear colección" "$(code -X POST -H "$R" -H "$J" -d "{\"id\":\"$C\",\"name\":\"Java senior $RANDOM\"}" $API/api/v1/tenant/collections)" 201
 check "agregar a favoritos" "$(code -X PUT -H "$R" $API/api/v1/tenant/collections/$C/talents/$T)" 204
-check "filtrar por colección" "$(code -H "$R" "$API/api/v1/tenant/talents?collectionId=$C")" 200
+check "filtrar por colección" "$(srch "$R" "{\"collectionId\":\"$C\"}")" 200
 check "solo ese talento" "$(body | jget .total)" 1
-check "otro usuario no usa mi colección" "$(code -H "$A" "$API/api/v1/tenant/talents?collectionId=$C")" 404
+check "otro usuario no usa mi colección" "$(srch "$A" "{\"collectionId\":\"$C\"}")" 404
 
 echo "== Archivos (cifrados en el volumen)"
 mkdir -p tmp
@@ -115,13 +117,13 @@ O="Authorization: Bearer $(body | jget .accessToken)"
 check "otro tenant no ve el talento" "$(code -H "$O" $API/api/v1/tenant/talents/$T)" 404
 check "otro tenant no descarga el CV" "$(code -H "$O" $API/api/v1/tenant/talents/files/$FID)" 404
 check "otro tenant no modifica el talento" "$(code -X PUT -H "$O" -H "$J" -d '{"firstName":"Hack","lastName":"X"}' $API/api/v1/tenant/talents/$T)" 403
-check "otro tenant no ve en búsqueda" "$(code -H "$O" "$API/api/v1/tenant/talents?search=quispe")" 200
+check "otro tenant no ve en búsqueda" "$(srch "$O" "{\"search\":\"quispe\"}")" 200
 check "lista vacía" "$(body | jget .total)" 0
 code -X PATCH -H "Authorization: Bearer $SA" -H "$J" -d '{"status":"CANCELLED"}' $API/api/v1/platform/tenants/$OID/status >/dev/null
 
 echo "== Archivar"
 check "archivar talento" "$(code -X PATCH -H "$A" -H "$J" -d '{"status":"ARCHIVED"}' $API/api/v1/tenant/talents/$T/status)" 204
-check "archivado no sale en búsqueda activa" "$(code -H "$R" "$API/api/v1/tenant/talents?search=quispe")" 200
+check "archivado no sale en búsqueda activa" "$(srch "$R" "{\"search\":\"quispe\"}")" 200
 check "no aparece" "$(body | jget ".items.some(i=>i.id==='$T')")" false
 echo "== Resultado: $pass OK, $fail FAIL"
 [ $fail -eq 0 ]

@@ -33,7 +33,8 @@ check "reusar invitación" "$(code -H "$J" -d "{\"fullName\":\"X\",\"password\":
 
 echo "== Admin del tenant"
 check "login admin en otro tenant" "$(code -H "$J" -d "{\"tenant\":\"otro\",\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PW\"}" $API/api/v1/auth/login)" 401
-check "login admin Fractal" "$(code -c /tmp/ad.jar -H "$J" -d "{\"tenant\":\"fractal\",\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PW\"}" $API/api/v1/auth/login)" 200
+check "login admin Fractal (recordarme)" "$(code -c /tmp/ad.jar -D /tmp/ad.hdr -H "$J" -d "{\"tenant\":\"fractal\",\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PW\",\"remember\":true}" $API/api/v1/auth/login)" 200
+check "cookie persistente con recordarme" "$(grep -i "set-cookie: bdt_rt" /tmp/ad.hdr | grep -ci expires)" 1
 AD=$(body | jget .accessToken)
 check "admin NO accede a plataforma" "$(code -H "Authorization: Bearer $AD" $API/api/v1/platform/tenants)" 403
 check "admin lista usuarios" "$(code -H "Authorization: Bearer $AD" $API/api/v1/tenant/users)" 200
@@ -59,7 +60,9 @@ check "key revocada no entra" "$(code -H "X-Api-Key: $KEY" $API/integration/v1/w
 echo "== Sesión"
 check "refresh sin Origin (CSRF)" "$(code -X POST -b /tmp/ad.jar $API/api/v1/auth/refresh)" 403
 check "refresh" "$(code -X POST -b /tmp/ad.jar -c /tmp/ad2.jar -H "$O" $API/api/v1/auth/refresh)" 200
-check "reuso refresh viejo revoca familia" "$(code -X POST -b /tmp/ad.jar -H "$O" $API/api/v1/auth/refresh)" 401
+check "reuso inmediato tolerado (2 pestañas / recarga)" "$(code -X POST -b /tmp/ad.jar -H "$O" $API/api/v1/auth/refresh)" 200
+sleep ${GRACE_WAIT:-4}
+check "reuso fuera de tolerancia revoca familia" "$(code -X POST -b /tmp/ad.jar -H "$O" $API/api/v1/auth/refresh)" 401
 check "refresh nuevo también revocado" "$(code -X POST -b /tmp/ad2.jar -H "$O" $API/api/v1/auth/refresh)" 401
 check "token manipulado" "$(code -H "Authorization: Bearer ${AD}x" $API/api/v1/auth/me)" 401
 check "alg none" "$(code -H "Authorization: Bearer eyJhbGciOiJub25lIn0.eyJzdWIiOiJ4In0." $API/api/v1/auth/me)" 401

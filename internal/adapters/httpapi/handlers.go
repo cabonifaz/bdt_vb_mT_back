@@ -31,9 +31,13 @@ func (s *Server) client(r *http.Request) app.Client {
 
 // ------------------------------------------------------------------ Auth
 
-func (s *Server) setRefreshCookie(w http.ResponseWriter, token string, exp time.Time) {
-	c := &http.Cookie{Name: refreshCookie, Value: token, Path: "/api/v1/auth", HttpOnly: true,
-		Secure: s.cfg.CookieSecure, Expires: exp}
+// setRefreshCookie: con "Recordarme" la cookie es persistente (sobrevive al cierre del navegador);
+// sin él es una cookie de sesión del navegador.
+func (s *Server) setRefreshCookie(w http.ResponseWriter, token string, exp time.Time, persistent bool) {
+	c := &http.Cookie{Name: refreshCookie, Value: token, Path: "/api/v1/auth", HttpOnly: true, Secure: s.cfg.CookieSecure}
+	if persistent {
+		c.Expires = exp
+	}
 	if s.cfg.CookieSecure {
 		c.SameSite = http.SameSiteNoneMode // front y API en dominios distintos (Railway)
 	} else {
@@ -82,7 +86,7 @@ func toMe(p *domain.Principal) meOut {
 }
 
 func (s *Server) writeSession(w http.ResponseWriter, sess *app.Session) {
-	s.setRefreshCookie(w, sess.RefreshToken, sess.RefreshExp)
+	s.setRefreshCookie(w, sess.RefreshToken, sess.RefreshExp, sess.Remember)
 	writeJSON(w, http.StatusOK, sessionOut{AccessToken: sess.AccessToken, ExpiresAt: sess.ExpiresAt, User: toMe(sess.User)})
 }
 
@@ -91,12 +95,13 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		Tenant   string `json:"tenant"`
 		Email    string `json:"email"`
 		Password string `json:"password"`
+		Remember bool   `json:"remember"`
 	}
 	if err := decode(w, r, &in); err != nil {
 		s.writeErr(w, r, err)
 		return
 	}
-	sess, err := s.Auth.Login(r.Context(), in.Tenant, in.Email, in.Password, s.client(r))
+	sess, err := s.Auth.Login(r.Context(), in.Tenant, in.Email, in.Password, in.Remember, s.client(r))
 	if err != nil {
 		s.writeErr(w, r, err)
 		return
@@ -116,7 +121,7 @@ func (s *Server) refresh(w http.ResponseWriter, r *http.Request) {
 	}
 	sess, err := s.Auth.Refresh(r.Context(), c.Value, s.client(r))
 	if err != nil {
-		s.setRefreshCookie(w, "", time.Time{})
+		s.setRefreshCookie(w, "", time.Time{}, false)
 		s.writeErr(w, r, err)
 		return
 	}
@@ -127,7 +132,7 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(refreshCookie); err == nil && s.originAllowed(r) {
 		_ = s.Auth.Logout(r.Context(), c.Value)
 	}
-	s.setRefreshCookie(w, "", time.Time{})
+	s.setRefreshCookie(w, "", time.Time{}, false)
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -277,36 +277,45 @@ END $$
 
 DROP PROCEDURE IF EXISTS sp_session_create $$
 CREATE PROCEDURE sp_session_create(IN p_uuid CHAR(36), IN p_user_id BIGINT UNSIGNED, IN p_token_hash CHAR(64),
-  IN p_family_id CHAR(36), IN p_expires_at DATETIME(3), IN p_ip VARCHAR(45), IN p_user_agent VARCHAR(300))
+  IN p_family_id CHAR(36), IN p_remember TINYINT(1), IN p_expires_at DATETIME(3), IN p_ip VARCHAR(45), IN p_user_agent VARCHAR(300))
 BEGIN
-  INSERT INTO user_session (uuid, user_id, token_hash, family_id, expires_at, ip, user_agent)
-  VALUES (p_uuid, p_user_id, p_token_hash, p_family_id, p_expires_at, p_ip, LEFT(p_user_agent, 300));
+  INSERT INTO user_session (uuid, user_id, token_hash, family_id, remember, expires_at, ip, user_agent)
+  VALUES (p_uuid, p_user_id, p_token_hash, p_family_id, IFNULL(p_remember, 0), p_expires_at, p_ip, LEFT(p_user_agent, 300));
 END $$
 
--- Rotación de refresh token. Si se reutiliza un token ya rotado se revoca toda la familia.
+-- Rotación de refresh token (uso único, vencimiento deslizante).
+-- Reutilizar un token ya rotado revoca toda la familia (posible robo), salvo dentro de
+-- p_grace_seconds: dos pestañas o una recarga pueden renovar casi a la vez de forma legítima.
+-- La nueva sesión hereda "recordarme": vence en p_exp_remember o p_exp_session.
 DROP PROCEDURE IF EXISTS sp_session_rotate $$
 CREATE PROCEDURE sp_session_rotate(IN p_old_hash CHAR(64), IN p_new_uuid CHAR(36), IN p_new_hash CHAR(64),
-  IN p_expires_at DATETIME(3), IN p_ip VARCHAR(45), IN p_user_agent VARCHAR(300))
+  IN p_exp_session DATETIME(3), IN p_exp_remember DATETIME(3), IN p_grace_seconds INT, IN p_ip VARCHAR(45), IN p_user_agent VARCHAR(300))
 BEGIN
   DECLARE v_id BIGINT UNSIGNED;
   DECLARE v_user BIGINT UNSIGNED;
   DECLARE v_family CHAR(36);
+  DECLARE v_remember TINYINT(1);
   DECLARE v_revoked DATETIME(3);
   DECLARE v_expires DATETIME(3);
   DECLARE v_tenant BIGINT UNSIGNED;
-  SELECT id, user_id, family_id, revoked_at, expires_at INTO v_id, v_user, v_family, v_revoked, v_expires
+  DECLARE v_new_exp DATETIME(3);
+  SELECT id, user_id, family_id, remember, revoked_at, expires_at INTO v_id, v_user, v_family, v_remember, v_revoked, v_expires
     FROM user_session WHERE token_hash = p_old_hash FOR UPDATE;
   IF v_id IS NULL THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:SESSION_INVALID'; END IF;
   IF v_revoked IS NOT NULL THEN
-    UPDATE user_session SET revoked_at = NOW(3) WHERE family_id = v_family AND revoked_at IS NULL;
-    SELECT tenant_id INTO v_tenant FROM app_user WHERE id = v_user;
-    CALL sp_audit_insert(v_tenant, v_user, NULL, 'TOKEN_REUSE', 'user_session', v_family, NULL, p_ip);
-    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:SESSION_REUSED';
+    IF v_revoked < NOW(3) - INTERVAL IFNULL(p_grace_seconds, 0) SECOND
+       OR EXISTS (SELECT 1 FROM user_session WHERE family_id = v_family AND revoked_at IS NULL AND expires_at > NOW(3)) = 0 THEN
+      UPDATE user_session SET revoked_at = NOW(3) WHERE family_id = v_family AND revoked_at IS NULL;
+      SELECT tenant_id INTO v_tenant FROM app_user WHERE id = v_user;
+      CALL sp_audit_insert(v_tenant, v_user, NULL, 'TOKEN_REUSE', 'user_session', v_family, NULL, p_ip);
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:SESSION_REUSED';
+    END IF;
   END IF;
   IF v_expires < NOW(3) THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:SESSION_EXPIRED'; END IF;
-  UPDATE user_session SET revoked_at = NOW(3) WHERE id = v_id;
-  CALL sp_session_create(p_new_uuid, v_user, p_new_hash, v_family, p_expires_at, p_ip, p_user_agent);
-  SELECT v_user AS user_id;
+  IF v_revoked IS NULL THEN UPDATE user_session SET revoked_at = NOW(3) WHERE id = v_id; END IF;
+  SET v_new_exp = IF(v_remember = 1, p_exp_remember, p_exp_session);
+  CALL sp_session_create(p_new_uuid, v_user, p_new_hash, v_family, v_remember, v_new_exp, p_ip, p_user_agent);
+  SELECT v_user AS user_id, v_remember AS remember, v_new_exp AS expires_at;
 END $$
 
 DROP PROCEDURE IF EXISTS sp_session_revoke $$

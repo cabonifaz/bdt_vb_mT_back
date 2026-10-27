@@ -54,8 +54,9 @@ type AuthRepository interface {
 	FindUser(ctx context.Context, tenantSlug, emailBidx string) (*domain.AuthUser, error)
 	RegisterAttempt(ctx context.Context, userID uint64, success bool, maxAttempts, lockMinutes int, ip string) error
 	SecurityProfile(ctx context.Context, userID uint64) (*domain.AuthUser, []string, []string, error)
-	CreateSession(ctx context.Context, uuid string, userID uint64, tokenHash, family string, exp time.Time, ip, ua string) error
-	RotateSession(ctx context.Context, oldHash, newUUID, newHash string, exp time.Time, ip, ua string) (uint64, error)
+	CreateSession(ctx context.Context, uuid string, userID uint64, tokenHash, family string, remember bool, exp time.Time, ip, ua string) error
+	// RotateSession devuelve el usuario, si la sesión es "recordada" y su nuevo vencimiento.
+	RotateSession(ctx context.Context, oldHash, newUUID, newHash string, expSession, expRemember time.Time, graceSeconds int, ip, ua string) (uint64, bool, time.Time, error)
 	RevokeSession(ctx context.Context, tokenHash string) error
 	BootstrapSuperAdmin(ctx context.Context, uuid string, emailEnc []byte, emailBidx string, nameEnc []byte, pwHash string) error
 }

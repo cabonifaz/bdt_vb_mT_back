@@ -23,7 +23,8 @@ func (s *Server) talentRoutes(r chi.Router) {
 	write := s.requirePerm("talent.write")
 	r.Use(s.idempotent)
 
-	r.With(read).Get("/talents", s.searchTalents)
+	// búsqueda por POST: los filtros (nombres, criterios) no quedan en URLs ni en logs de acceso
+	r.With(read).Post("/talents/search", s.searchTalents)
 	r.With(write).Post("/talents", s.saveTalent)
 	r.With(read).Get("/talents/files/{fid}", s.downloadTalentFile)
 	r.With(write).Delete("/talents/files/{fid}", s.deleteTalentFile)
@@ -103,16 +104,32 @@ type recorder struct {
 func (r *recorder) WriteHeader(code int) { r.status = code; r.ResponseWriter.WriteHeader(code) }
 
 func (s *Server) searchTalents(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	f := ports.TalentFilter{
-		Search: q.Get("search"), Skills: q.Get("skills"), EnglishLevel: q.Get("englishLevel"), Position: q.Get("position"),
-		Education: q.Get("education"), GradeID: q.Get("gradeId"), CollectionID: q.Get("collectionId"), Status: q.Get("status"),
-		Page: qInt(r, "page", 1), PageSize: qInt(r, "pageSize", 10),
+	var in struct {
+		Search       string   `json:"search"`
+		Skills       []string `json:"skills"`
+		EnglishLevel string   `json:"englishLevel"`
+		MinYears     *float64 `json:"minYears"`
+		Position     string   `json:"position"`
+		Education    string   `json:"education"`
+		GradeID      string   `json:"gradeId"`
+		CollectionID string   `json:"collectionId"`
+		Status       string   `json:"status"`
+		Page         int      `json:"page"`
+		PageSize     int      `json:"pageSize"`
 	}
-	if v, err := strconv.ParseFloat(q.Get("minYears"), 64); err == nil {
-		f.MinYears = &v
+	if err := decode(w, r, &in); err != nil {
+		s.writeErr(w, r, err)
+		return
 	}
-	page, err := s.Talents.Search(r.Context(), principal(r), f)
+	if len(in.Skills) > 30 {
+		s.writeErr(w, r, domain.ErrValidation)
+		return
+	}
+	page, err := s.Talents.Search(r.Context(), principal(r), ports.TalentFilter{
+		Search: in.Search, Skills: strings.Join(in.Skills, ","), EnglishLevel: in.EnglishLevel, MinYears: in.MinYears,
+		Position: in.Position, Education: in.Education, GradeID: in.GradeID, CollectionID: in.CollectionID, Status: in.Status,
+		Page: in.Page, PageSize: in.PageSize,
+	})
 	if err != nil {
 		s.writeErr(w, r, err)
 		return

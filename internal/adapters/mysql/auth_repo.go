@@ -99,33 +99,32 @@ func (r AuthRepo) SecurityProfile(ctx context.Context, userID uint64) (*domain.A
 	return &u, roles, perms, nil
 }
 
-func (r AuthRepo) CreateSession(ctx context.Context, uuid string, userID uint64, tokenHash, family string, exp time.Time, ip, ua string) error {
-	return r.exec(ctx, "sp_session_create", uuid, userID, tokenHash, family, exp.UTC(), nullStr(ip), nullStr(ua))
+func (r AuthRepo) CreateSession(ctx context.Context, uuid string, userID uint64, tokenHash, family string, remember bool, exp time.Time, ip, ua string) error {
+	return r.exec(ctx, "sp_session_create", uuid, userID, tokenHash, family, remember, exp.UTC(), nullStr(ip), nullStr(ua))
 }
 
-func (r AuthRepo) RotateSession(ctx context.Context, oldHash, newUUID, newHash string, exp time.Time, ip, ua string) (uint64, error) {
-	rs, err := r.call(ctx, "sp_session_rotate", oldHash, newUUID, newHash, exp.UTC(), nullStr(ip), nullStr(ua))
+func (r AuthRepo) RotateSession(ctx context.Context, oldHash, newUUID, newHash string, expSession, expRemember time.Time, graceSeconds int, ip, ua string) (uint64, bool, time.Time, error) {
+	rs, err := r.call(ctx, "sp_session_rotate", oldHash, newUUID, newHash, expSession.UTC(), expRemember.UTC(), graceSeconds, nullStr(ip), nullStr(ua))
 	if err != nil {
-		return 0, err
+		return 0, false, time.Time{}, err
 	}
 	defer rs.Close()
 	var uid uint64
-	// sp_session_rotate llama a sp_session_create (sin result set) y luego devuelve user_id
-	for rs.Next() {
-		if err := rs.Each(func(scan func(...any) error) error { return scan(&uid) }); err != nil {
-			return 0, err
-		}
-		if uid != 0 {
-			break
+	var remember bool
+	var exp time.Time
+	// sp_session_rotate llama a sp_session_create (sin result set) y luego devuelve la sesión
+	for rs.Next() && uid == 0 {
+		if err := rs.Each(func(scan func(...any) error) error { return scan(&uid, &remember, &exp) }); err != nil {
+			return 0, false, time.Time{}, err
 		}
 	}
 	if err := rs.Close(); err != nil {
-		return 0, err
+		return 0, false, time.Time{}, err
 	}
 	if uid == 0 {
-		return 0, domain.NewError("SESSION_INVALID")
+		return 0, false, time.Time{}, domain.NewError("SESSION_INVALID")
 	}
-	return uid, nil
+	return uid, remember, exp, nil
 }
 
 func (r AuthRepo) RevokeSession(ctx context.Context, tokenHash string) error {

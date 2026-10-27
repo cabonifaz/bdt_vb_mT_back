@@ -44,7 +44,7 @@ func Build(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, erro
 	tenantRepo := mysql.TenantRepo{Store: store}
 
 	auth := &app.AuthService{Repo: mysql.AuthRepo{Store: store}, Cipher: cipher, Hasher: hasher, Tokens: issuer,
-		Cfg: app.AuthConfig{RefreshTTL: cfg.RefreshTTL, MaxAttempts: 5, LockMinutes: 15}}
+		Cfg: app.AuthConfig{RefreshTTL: cfg.RefreshTTL, RememberTTL: cfg.RememberTTL, ReuseGrace: cfg.ReuseGrace, MaxAttempts: 5, LockMinutes: 15}}
 	users := &app.UserService{Users: mysql.UserRepo{Store: store}, Invitations: mysql.InvitationRepo{Store: store},
 		Cipher: cipher, Hasher: hasher, Mailer: mailer.LogMailer{Log: log}, AppURL: cfg.PublicAppURL,
 		InviteTTL: cfg.InviteTTL, ExposeLink: cfg.Env == "local" || cfg.Env == "staging"}

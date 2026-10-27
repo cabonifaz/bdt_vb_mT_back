@@ -23,6 +23,8 @@ type Config struct {
 	JWTSecret     string
 	AccessTTL     time.Duration
 	RefreshTTL    time.Duration
+	RememberTTL   time.Duration
+	ReuseGrace    int
 	DataKey       string
 	BlindIndexKey string
 	APIKeyPepper  []byte
@@ -48,6 +50,8 @@ func Load() (Config, error) {
 		JWTSecret:         os.Getenv("JWT_SECRET"),
 		AccessTTL:         minutes("ACCESS_TOKEN_MINUTES", 15),
 		RefreshTTL:        minutes("REFRESH_TOKEN_MINUTES", 60*12),
+		RememberTTL:       minutes("REMEMBER_ME_MINUTES", 60*24*30),
+		ReuseGrace:        intVal("REFRESH_REUSE_GRACE_SECONDS", 30),
 		DataKey:           os.Getenv("DATA_ENCRYPTION_KEY"),
 		BlindIndexKey:     os.Getenv("BLIND_INDEX_KEY"),
 		InviteTTL:         minutes("INVITATION_MINUTES", 60*72),
