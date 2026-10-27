@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>API de integración · Banco de Talentos</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui.css">
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, sans-serif; background: #fff; color: #1f2937; }
+    .gate { max-width: 460px; margin: 12vh auto; padding: 32px; border: 1px solid #e5e7eb; border-radius: 12px; }
+    .gate h1 { font-size: 20px; margin: 0 0 8px; }
+    .gate p { color: #6b7280; font-size: 14px; line-height: 1.5; }
+    .gate input { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font: inherit; }
+    .gate button { margin-top: 12px; width: 100%; padding: 10px; border: 0; border-radius: 8px; background: #009688; color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+    .gate .err { color: #b91c1c; font-size: 13px; min-height: 18px; margin-top: 8px; }
+    #ui { display: none; }
+  </style>
+</head>
+<body>
+  <form class="gate" id="gate" autocomplete="off">
+    <h1>API de integración</h1>
+    <p>Ingrese la API key de su organización. Las keys las solicita el administrador de su tenant y las habilita el Super Administrador.</p>
+    <input id="key" type="password" placeholder="bdt_xxxxxxxxxxxx_..." aria-label="API key" required>
+    <button type="submit">Ver documentación</button>
+    <div class="err" id="err" role="alert"></div>
+  </form>
+  <div id="ui"></div>
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/swagger-ui-bundle.js" crossorigin="anonymous"></script>
+  <script src="/integration/docs.js"></script>
+</body>
+</html>

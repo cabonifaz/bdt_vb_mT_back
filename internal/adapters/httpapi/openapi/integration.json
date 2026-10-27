@@ -1,0 +1,83 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Banco de Talentos - API de integración",
+    "version": "1.0.0",
+    "description": "API para integrar sistemas externos con el Banco de Talentos. Cada API key pertenece a un tenant y debe ser habilitada por el Super Administrador. Envíe la key en la cabecera X-Api-Key. Límite: 300 solicitudes por minuto por IP."
+  },
+  "servers": [{ "url": "/integration/v1" }],
+  "security": [{ "ApiKey": [] }],
+  "components": {
+    "securitySchemes": {
+      "ApiKey": { "type": "apiKey", "in": "header", "name": "X-Api-Key" }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": { "type": "string", "example": "APIKEY_INVALID" },
+              "requestId": { "type": "string" }
+            }
+          }
+        }
+      },
+      "MasterItem": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "table": { "type": "string", "example": "LANGUAGE" },
+          "code": { "type": "string", "example": "EN" },
+          "label": { "type": "object", "additionalProperties": { "type": "string" }, "example": { "es": "Inglés", "en": "English" } },
+          "parentId": { "type": "string", "format": "uuid", "nullable": true },
+          "num1": { "type": "number", "nullable": true },
+          "str1": { "type": "string", "nullable": true },
+          "sortOrder": { "type": "integer" },
+          "isActive": { "type": "boolean" },
+          "isTenantOwned": { "type": "boolean" }
+        }
+      }
+    },
+    "responses": {
+      "Unauthorized": { "description": "API key ausente o inválida", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "Forbidden": { "description": "API key no habilitada o sin el scope requerido", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "TooMany": { "description": "Límite de solicitudes superado" }
+    }
+  },
+  "paths": {
+    "/whoami": {
+      "get": {
+        "summary": "Identidad de la API key",
+        "responses": {
+          "200": {
+            "description": "Tenant y scopes de la key",
+            "content": { "application/json": { "schema": { "type": "object", "properties": {
+              "tenant": { "type": "string" }, "keyId": { "type": "string" },
+              "scopes": { "type": "array", "items": { "type": "string" } } } } } }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/masters": {
+      "get": {
+        "summary": "Catálogos (maestro de maestros) visibles para el tenant",
+        "description": "Requiere el scope masters.read.",
+        "parameters": [{
+          "name": "tables", "in": "query", "required": false,
+          "description": "Códigos de catálogo separados por coma (LANGUAGE,CURRENCY,...)",
+          "schema": { "type": "string" }
+        }],
+        "responses": {
+          "200": { "description": "Valores", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/MasterItem" } } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "429": { "$ref": "#/components/responses/TooMany" }
+        }
+      }
+    }
+  }
+}

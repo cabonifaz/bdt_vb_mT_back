@@ -1,0 +1,16 @@
+# Secretos: nunca al repo
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+# Binarios / build
+/bin/
+/tmp/
+*.exe
+# Almacenamiento local de archivos (volumen persistente en Railway)
+/data/
+# Pruebas
+/tests/node_modules/
+/tests/playwright-report/
+/tests/test-results/
