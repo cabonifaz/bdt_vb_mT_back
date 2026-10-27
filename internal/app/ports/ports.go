@@ -68,6 +68,7 @@ type TenantRepository interface {
 	PublicBySlug(ctx context.Context, slug string) (*domain.Branding, error)
 	UpdateBranding(ctx context.Context, m Meta, tenantID uint64, b domain.Branding) (*domain.Branding, error)
 	SetBrandingFile(ctx context.Context, m Meta, tenantID uint64, kind, fileUUID string) (*domain.Branding, error)
+	UpdateCVTemplate(ctx context.Context, m Meta, tenantID uint64, t CVTemplateUpdate) (*domain.Branding, error)
 	Resolve(ctx context.Context, m Meta, tenantUUID string) (id uint64, name string, err error)
 }
 
@@ -147,4 +148,12 @@ type FileStorage interface {
 
 type Mailer interface {
 	SendInvitation(ctx context.Context, to, tenantName, link, locale string) error
+}
+
+// CVTemplateUpdate: ajustes de la plantilla del CV (las imágenes se suben como archivos de branding CV_HEADER / CV_FOOTER).
+type CVTemplateUpdate struct {
+	FooterText  string `json:"footerText"`
+	ShowPhoto   bool   `json:"showPhoto"`
+	ClearHeader bool   `json:"clearHeader"`
+	ClearFooter bool   `json:"clearFooter"`
 }

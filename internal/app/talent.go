@@ -21,6 +21,8 @@ type TalentService struct {
 	Repo    ports.TalentRepository
 	Cipher  ports.Cipher
 	Storage ports.FileStorage
+	// Translator traduce el CV (OpenAI); sin key responde AI_NOT_CONFIGURED
+	Translator Translator
 }
 
 func tenantOf(p *domain.Principal) (uint64, error) {

@@ -29,7 +29,7 @@ const maxBrandingBytes = 2 << 20 // 2 MB
 
 // UploadBranding guarda logo/favicon en el volumen persistente y lo asocia al branding.
 func (s *FileService) UploadBranding(ctx context.Context, p *domain.Principal, ip, kind, originalName string, r io.Reader) (*domain.Branding, error) {
-	if kind != "LOGO" && kind != "LOGO_DARK" && kind != "FAVICON" {
+	if kind != "LOGO" && kind != "LOGO_DARK" && kind != "FAVICON" && kind != "CV_HEADER" && kind != "CV_FOOTER" {
 		return nil, domain.NewError("INVALID_KIND")
 	}
 	br := bufio.NewReader(r)

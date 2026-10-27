@@ -128,9 +128,12 @@ BEGIN
          b.display_name, b.logo_url, lf.uuid AS logo_file_uuid, ldf.uuid AS logo_dark_file_uuid,
          ff.uuid AS favicon_file_uuid,
          b.color_primary, b.color_primary_hover, b.color_secondary, b.color_accent, b.color_sidebar,
-         b.font_family, IFNULL(b.updated_at, b.created_at) AS branding_version
+         b.font_family, IFNULL(b.updated_at, b.created_at) AS branding_version,
+         cvh.uuid AS cv_header_uuid, cvf.uuid AS cv_footer_uuid, b.cv_footer_text, b.cv_show_photo
     FROM tenant t
     JOIN tenant_branding b ON b.tenant_id = t.id
+    LEFT JOIN file_object cvh ON cvh.id = b.cv_header_file_id AND cvh.deleted_at IS NULL
+    LEFT JOIN file_object cvf ON cvf.id = b.cv_footer_file_id AND cvf.deleted_at IS NULL
     LEFT JOIN file_object lf  ON lf.id = b.logo_file_id AND lf.deleted_at IS NULL
     LEFT JOIN file_object ldf ON ldf.id = b.logo_dark_file_id AND ldf.deleted_at IS NULL
     LEFT JOIN file_object ff  ON ff.id = b.favicon_file_id AND ff.deleted_at IS NULL
@@ -161,6 +164,24 @@ BEGIN
   CALL sp_tenant_public_get(v_slug);
 END $$
 
+-- Plantilla del CV: texto del pie, foto y quitar imágenes de cabecera/pie
+DROP PROCEDURE IF EXISTS sp_branding_cv_update $$
+CREATE PROCEDURE sp_branding_cv_update(IN p_actor_id BIGINT UNSIGNED, IN p_tenant_id BIGINT UNSIGNED,
+  IN p_footer_text VARCHAR(300), IN p_show_photo TINYINT(1), IN p_clear_header TINYINT(1), IN p_clear_footer TINYINT(1), IN p_ip VARCHAR(45))
+BEGIN
+  DECLARE v_slug VARCHAR(60);
+  CALL sp_assert_actor(p_actor_id, p_tenant_id, 'tenant.branding.manage');
+  UPDATE tenant_branding
+     SET cv_footer_text = NULLIF(TRIM(p_footer_text), ''), cv_show_photo = IFNULL(p_show_photo, 0),
+         cv_header_file_id = IF(p_clear_header = 1, NULL, cv_header_file_id),
+         cv_footer_file_id = IF(p_clear_footer = 1, NULL, cv_footer_file_id), updated_by = p_actor_id
+   WHERE tenant_id = p_tenant_id;
+  CALL sp_audit_insert(p_tenant_id, p_actor_id, NULL, 'UPDATE_CV_TEMPLATE', 'tenant_branding', p_tenant_id,
+       JSON_OBJECT('showPhoto', p_show_photo, 'clearHeader', p_clear_header, 'clearFooter', p_clear_footer), p_ip);
+  SELECT slug INTO v_slug FROM tenant WHERE id = p_tenant_id;
+  CALL sp_tenant_public_get(v_slug);
+END $$
+
 DROP PROCEDURE IF EXISTS sp_branding_set_file $$
 CREATE PROCEDURE sp_branding_set_file(IN p_actor_id BIGINT UNSIGNED, IN p_tenant_id BIGINT UNSIGNED,
   IN p_kind VARCHAR(20), IN p_file_uuid CHAR(36), IN p_ip VARCHAR(45))
@@ -175,6 +196,8 @@ BEGIN
     WHEN 'LOGO'      THEN UPDATE tenant_branding SET logo_file_id = v_file_id, updated_by = p_actor_id WHERE tenant_id = p_tenant_id;
     WHEN 'LOGO_DARK' THEN UPDATE tenant_branding SET logo_dark_file_id = v_file_id, updated_by = p_actor_id WHERE tenant_id = p_tenant_id;
     WHEN 'FAVICON'   THEN UPDATE tenant_branding SET favicon_file_id = v_file_id, updated_by = p_actor_id WHERE tenant_id = p_tenant_id;
+    WHEN 'CV_HEADER' THEN UPDATE tenant_branding SET cv_header_file_id = v_file_id, updated_by = p_actor_id WHERE tenant_id = p_tenant_id;
+    WHEN 'CV_FOOTER' THEN UPDATE tenant_branding SET cv_footer_file_id = v_file_id, updated_by = p_actor_id WHERE tenant_id = p_tenant_id;
     ELSE SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:INVALID_KIND';
   END CASE;
   CALL sp_audit_insert(p_tenant_id, p_actor_id, NULL, 'SET_FILE', 'tenant_branding', p_tenant_id,

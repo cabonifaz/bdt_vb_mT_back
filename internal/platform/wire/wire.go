@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/cabonifaz/bdt_vb_mT_back/internal/adapters/ai"
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/adapters/httpapi"
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/adapters/identity"
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/adapters/mailer"
@@ -59,13 +60,14 @@ func Build(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, erro
 
 	srv := httpapi.NewServer(httpapi.Config{CORSOrigins: cfg.CORSOrigins, TrustProxy: cfg.TrustProxy,
 		CookieSecure: !cfg.IsLocal(), RateGeneral: cfg.RateGeneralPerMin, RateAuth: cfg.RateAuthPerMin}, log, httpapi.Deps{
-		Auth:       auth,
-		Tenants:    &app.TenantService{Repo: tenantRepo, Users: users},
-		Users:      users,
-		ApiKeys:    &app.ApiKeyService{Repo: mysql.ApiKeyRepo{Store: store}, Pepper: cfg.APIKeyPepper},
-		Masters:    &app.MasterService{Repo: mysql.MasterRepo{Store: store}},
-		Files:      &app.FileService{Repo: fileRepo, Storage: files, Tenants: tenantRepo},
-		Talents:    &app.TalentService{Repo: mysql.TalentRepo{Store: store}, Cipher: cipher, Storage: files},
+		Auth:    auth,
+		Tenants: &app.TenantService{Repo: tenantRepo, Users: users},
+		Users:   users,
+		ApiKeys: &app.ApiKeyService{Repo: mysql.ApiKeyRepo{Store: store}, Pepper: cfg.APIKeyPepper},
+		Masters: &app.MasterService{Repo: mysql.MasterRepo{Store: store}},
+		Files:   &app.FileService{Repo: fileRepo, Storage: files, Tenants: tenantRepo},
+		Talents: &app.TalentService{Repo: mysql.TalentRepo{Store: store}, Cipher: cipher, Storage: files,
+			Translator: ai.NewOpenAI(cfg.OpenAIKey, cfg.OpenAIModel)},
 		Sync:       mysql.SyncRepo{Store: store},
 		Blacklist:  &app.BlacklistService{Repo: mysql.BlacklistRepo{Store: store}, Cipher: cipher},
 		Interviews: &app.InterviewService{Repo: mysql.InterviewRepo{Store: store}, Cipher: cipher, Storage: files, Timezone: tz},

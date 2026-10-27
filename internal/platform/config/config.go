@@ -36,6 +36,9 @@ type Config struct {
 	// Consulta de DNI (RENIEC): decolecta | factiliza; sin token la función queda deshabilitada
 	DNIProvider, DNIToken, DNIURL string
 
+	// Traducción del CV (mismo proveedor que el sistema heredado)
+	OpenAIKey, OpenAIModel string
+
 	RateGeneralPerMin int
 	RateAuthPerMin    int
 }
@@ -64,6 +67,8 @@ func Load() (Config, error) {
 		DNIProvider:       get("DNI_API_PROVIDER", "decolecta"),
 		DNIToken:          os.Getenv("DNI_API_TOKEN"),
 		DNIURL:            os.Getenv("DNI_API_URL"),
+		OpenAIKey:         os.Getenv("OPENAI_API_KEY"),
+		OpenAIModel:       get("OPENAI_MODEL", "gpt-4.1-mini"),
 		RateGeneralPerMin: intVal("RATE_LIMIT_PER_MIN", 600),
 		RateAuthPerMin:    intVal("RATE_LIMIT_AUTH_PER_MIN", 10),
 	}

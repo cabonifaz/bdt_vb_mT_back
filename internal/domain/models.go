@@ -37,6 +37,11 @@ type Branding struct {
 	ColorSidebar    string    `json:"colorSidebar"`
 	FontFamily      string    `json:"fontFamily"`
 	Version         time.Time `json:"version"`
+	// Plantilla del CV con la marca del tenant
+	CVHeaderURL  string `json:"cvHeaderUrl,omitempty"`
+	CVFooterURL  string `json:"cvFooterUrl,omitempty"`
+	CVFooterText string `json:"cvFooterText,omitempty"`
+	CVShowPhoto  bool   `json:"cvShowPhoto"`
 }
 
 type User struct {

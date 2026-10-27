@@ -96,10 +96,17 @@ func (r TenantRepo) SetStatus(ctx context.Context, m ports.Meta, tenantUUID, sta
 func scanBranding(scan func(...any) error) (domain.Branding, error) {
 	var b domain.Branding
 	var tenantUUID, status string
-	var logoURL, logoFile, logoDark, favicon sql.NullString
+	var logoURL, logoFile, logoDark, favicon, cvHeader, cvFooter, cvText sql.NullString
 	err := scan(&b.TenantID, &tenantUUID, &b.Slug, &b.Name, &status, &b.DefaultLocale, &b.DisplayName, &logoURL,
 		&logoFile, &logoDark, &favicon, &b.ColorPrimary, &b.ColorPrimaryHov, &b.ColorSecondary, &b.ColorAccent,
-		&b.ColorSidebar, &b.FontFamily, &b.Version)
+		&b.ColorSidebar, &b.FontFamily, &b.Version, &cvHeader, &cvFooter, &cvText, &b.CVShowPhoto)
+	b.CVFooterText = cvText.String
+	if cvHeader.Valid {
+		b.CVHeaderURL = "/api/v1/public/files/" + cvHeader.String
+	}
+	if cvFooter.Valid {
+		b.CVFooterURL = "/api/v1/public/files/" + cvFooter.String
+	}
 	b.TenantUUID = tenantUUID
 	b.LogoURL = logoURL.String
 	if logoFile.Valid {
@@ -146,6 +153,14 @@ func (r TenantRepo) PublicBySlug(ctx context.Context, slug string) (*domain.Bran
 func (r TenantRepo) UpdateBranding(ctx context.Context, m ports.Meta, tenantID uint64, b domain.Branding) (*domain.Branding, error) {
 	rs, err := r.call(ctx, "sp_branding_update", m.ActorID, tenantID, b.DisplayName, b.ColorPrimary, b.ColorPrimaryHov,
 		b.ColorSecondary, b.ColorAccent, b.ColorSidebar, b.FontFamily, nullStr(m.IP))
+	if err != nil {
+		return nil, err
+	}
+	return r.oneBranding(rs)
+}
+
+func (r TenantRepo) UpdateCVTemplate(ctx context.Context, m ports.Meta, tenantID uint64, t ports.CVTemplateUpdate) (*domain.Branding, error) {
+	rs, err := r.call(ctx, "sp_branding_cv_update", m.ActorID, tenantID, t.FooterText, t.ShowPhoto, t.ClearHeader, t.ClearFooter, nullStr(m.IP))
 	if err != nil {
 		return nil, err
 	}

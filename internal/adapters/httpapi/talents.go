@@ -42,6 +42,7 @@ func (s *Server) talentRoutes(r chi.Router) {
 	r.With(write).Put("/talents/{id}/languages", s.saveLanguage)
 	r.With(read).Put("/talents/{id}/feedback", s.saveFeedback)
 	r.With(write).Post("/talents/{id}/files", s.uploadTalentFile)
+	r.With(read, s.requirePerm("talent.cv.generate")).Post("/talents/{id}/cv/translate", s.translateCV)
 
 	r.With(read).Get("/collections", s.listCollections)
 	r.With(read).Post("/collections", s.createCollection)
@@ -172,6 +173,23 @@ func (s *Server) saveTalent(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusCreated
 	}
 	writeJSON(w, status, res)
+}
+
+// POST /talents/{id}/cv/translate {"lang":"en"}: textos del CV traducidos para generar el PDF con la marca del tenant.
+func (s *Server) translateCV(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Lang string `json:"lang"`
+	}
+	if err := decode(w, r, &in); err != nil {
+		s.writeErr(w, r, err)
+		return
+	}
+	out, err := s.Talents.TranslateCV(r.Context(), principal(r), chi.URLParam(r, "id"), strings.ToLower(in.Lang))
+	if err != nil {
+		s.writeErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) setTalentStatus(w http.ResponseWriter, r *http.Request) {

@@ -90,6 +90,7 @@ func (s *Server) Handler() http.Handler {
 				r.Use(s.requireTenantUser)
 				r.With(s.requirePerm("tenant.branding.manage")).Put("/branding", s.updateBranding)
 				r.With(s.requirePerm("tenant.branding.manage")).Post("/branding/files/{kind}", s.uploadBrandingFile)
+				r.With(s.requirePerm("tenant.branding.manage")).Put("/branding/cv", s.updateCVTemplate)
 				r.With(s.requirePerm("tenant.masters.manage")).Put("/masters/items", s.upsertMasterItem)
 				r.With(s.requirePerm("tenant.users.manage")).Get("/users", s.listUsers)
 				r.With(s.requirePerm("tenant.users.manage")).Patch("/users/{id}/status", s.setUserStatus)

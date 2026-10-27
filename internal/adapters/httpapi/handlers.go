@@ -312,6 +312,20 @@ func (s *Server) updateBranding(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, b)
 }
 
+func (s *Server) updateCVTemplate(w http.ResponseWriter, r *http.Request) {
+	var in ports.CVTemplateUpdate
+	if err := decode(w, r, &in); err != nil {
+		s.writeErr(w, r, err)
+		return
+	}
+	b, err := s.Tenants.UpdateCVTemplate(r.Context(), principal(r), s.clientIP(r), in)
+	if err != nil {
+		s.writeErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, b)
+}
+
 func (s *Server) uploadBrandingFile(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 3<<20)
 	if err := r.ParseMultipartForm(3 << 20); err != nil {

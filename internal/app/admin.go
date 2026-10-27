@@ -72,6 +72,17 @@ func (s *TenantService) PublicBranding(ctx context.Context, slug string) (*domai
 	return s.Repo.PublicBySlug(ctx, strings.ToLower(slug))
 }
 
+// UpdateCVTemplate guarda el texto del pie, la foto y quita imágenes de la plantilla del CV.
+func (s *TenantService) UpdateCVTemplate(ctx context.Context, p *domain.Principal, ip string, t ports.CVTemplateUpdate) (*domain.Branding, error) {
+	if p.TenantID == nil {
+		return nil, domain.ErrForbidden
+	}
+	if len([]rune(t.FooterText)) > 300 {
+		return nil, domain.ErrValidation
+	}
+	return s.Repo.UpdateCVTemplate(ctx, meta(p, ip), *p.TenantID, t)
+}
+
 var hexColor = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
 
 func (s *TenantService) UpdateBranding(ctx context.Context, p *domain.Principal, ip string, tenantID uint64, b domain.Branding) (*domain.Branding, error) {
