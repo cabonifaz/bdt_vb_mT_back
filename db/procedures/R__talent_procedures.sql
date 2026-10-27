@@ -119,7 +119,8 @@ BEGIN
            WHERE l.talent_id = t.id AND l.deleted_at IS NULL AND l.language_item_id = (
              SELECT i.id FROM master_item i JOIN master_table m ON m.id = i.master_table_id
               WHERE m.code = 'LANGUAGE' AND i.code = 'EN' AND i.tenant_id IS NULL) LIMIT 1) AS english_level,
-         t.version, IFNULL(t.updated_at, t.created_at) AS updated_at
+         t.version, IFNULL(t.updated_at, t.created_at) AS updated_at,
+         EXISTS (SELECT 1 FROM talent_blacklist b WHERE b.talent_id = t.id AND b.deleted_at IS NULL) AS is_blacklisted
     FROM tmp_talent_hit h
     JOIN talent t ON t.id = h.id
     LEFT JOIN master_item c ON c.id = t.country_item_id

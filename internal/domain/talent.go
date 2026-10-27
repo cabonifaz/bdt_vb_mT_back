@@ -28,6 +28,7 @@ type TalentSummary struct {
 	EnglishLevel    *string         `json:"englishLevel,omitempty"`
 	Version         int             `json:"version"`
 	UpdatedAt       time.Time       `json:"updatedAt"`
+	IsBlacklisted   bool            `json:"isBlacklisted"`
 }
 
 // Rates: expectativa salarial (se guarda cifrada; solo visible con talent.rates.read).

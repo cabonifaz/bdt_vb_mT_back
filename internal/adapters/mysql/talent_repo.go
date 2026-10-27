@@ -72,7 +72,7 @@ func (r TalentRepo) Search(ctx context.Context, m ports.Meta, tenantID uint64, f
 			var country, skills []byte
 			var rating sql.NullFloat64
 			if err := scan(&t.ID, &t.FirstName, &t.LastName, &second, &headline, &country, &city, &rating, &photo,
-				&t.YearsExperience, &t.IsFavorite, &skills, &english, &t.Version, &t.UpdatedAt); err != nil {
+				&t.YearsExperience, &t.IsFavorite, &skills, &english, &t.Version, &t.UpdatedAt, &t.IsBlacklisted); err != nil {
 				return err
 			}
 			t.SecondLastName, t.Headline, t.City, t.PhotoID, t.EnglishLevel = strPtr(second), strPtr(headline), strPtr(city), strPtr(photo), strPtr(english)

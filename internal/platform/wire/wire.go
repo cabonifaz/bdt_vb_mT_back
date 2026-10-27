@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"log/slog"
+	"time"
 
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/adapters/httpapi"
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/adapters/mailer"
@@ -40,6 +41,11 @@ func Build(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, erro
 		return nil, err
 	}
 	store := mysql.NewStore(db)
+	// zona horaria por defecto de los tenants (las entrevistas se agendan en hora local)
+	tz, err := time.LoadLocation(cfg.DefaultTimezone)
+	if err != nil {
+		return nil, err
+	}
 	hasher := security.NewArgon2Hasher()
 	tenantRepo := mysql.TenantRepo{Store: store}
 
@@ -60,6 +66,8 @@ func Build(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, erro
 		Files:        &app.FileService{Repo: fileRepo, Storage: files, Tenants: tenantRepo},
 		Talents:      &app.TalentService{Repo: mysql.TalentRepo{Store: store}, Cipher: cipher, Storage: files},
 		Sync:         mysql.SyncRepo{Store: store},
+		Blacklist:    &app.BlacklistService{Repo: mysql.BlacklistRepo{Store: store}, Cipher: cipher},
+		Interviews:   &app.InterviewService{Repo: mysql.InterviewRepo{Store: store}, Cipher: cipher, Storage: files, Timezone: tz},
 		Audit:        mysql.AuditRepo{Store: store},
 		Translations: mysql.TranslationRepo{Store: store},
 		Tokens:       issuer,

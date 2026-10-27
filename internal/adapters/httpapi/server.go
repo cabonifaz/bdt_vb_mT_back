@@ -28,6 +28,8 @@ type Deps struct {
 	Masters      *app.MasterService
 	Files        *app.FileService
 	Talents      *app.TalentService
+	Blacklist    *app.BlacklistService
+	Interviews   *app.InterviewService
 	Sync         ports.SyncRepository
 	Audit        ports.AuditRepository
 	Translations ports.TranslationRepository
@@ -98,6 +100,8 @@ func (s *Server) Handler() http.Handler {
 				r.With(s.requirePerm("tenant.translations.manage")).Put("/translations", s.upsertTranslation)
 				r.With(s.requirePerm("tenant.audit.read")).Get("/audit", s.listAudit)
 				r.Group(s.talentRoutes)
+				r.Group(s.blacklistRoutes)
+				r.Group(s.interviewRoutes)
 			})
 
 			// Plataforma (Super Admin)

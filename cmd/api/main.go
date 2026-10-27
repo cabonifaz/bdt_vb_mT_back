@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	_ "time/tzdata" // base de zonas horarias embebida (Windows/contenedores mínimos)
 
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/adapters/httpapi"
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/platform/config"

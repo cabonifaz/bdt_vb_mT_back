@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"os"
 
+	_ "time/tzdata"
+
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/platform/config"
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/platform/wire"
 )

@@ -30,7 +30,8 @@ type Config struct {
 	APIKeyPepper  []byte
 	InviteTTL     time.Duration
 
-	StoragePath string
+	StoragePath     string
+	DefaultTimezone string
 
 	RateGeneralPerMin int
 	RateAuthPerMin    int
@@ -56,6 +57,7 @@ func Load() (Config, error) {
 		BlindIndexKey:     os.Getenv("BLIND_INDEX_KEY"),
 		InviteTTL:         minutes("INVITATION_MINUTES", 60*72),
 		StoragePath:       get("STORAGE_PATH", "./data/files"),
+		DefaultTimezone:   get("DEFAULT_TIMEZONE", "America/Lima"),
 		RateGeneralPerMin: intVal("RATE_LIMIT_PER_MIN", 600),
 		RateAuthPerMin:    intVal("RATE_LIMIT_AUTH_PER_MIN", 10),
 	}
