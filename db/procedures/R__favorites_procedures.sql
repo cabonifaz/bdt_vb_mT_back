@@ -172,7 +172,7 @@ BEGIN
     FROM app_user u
    WHERE u.tenant_id = p_tenant_id AND u.status = 'ACTIVE' AND u.deleted_at IS NULL AND u.id <> p_actor_id
      AND EXISTS (SELECT 1 FROM v_user_permission vp WHERE vp.user_id = u.id AND vp.code = 'talent.read')
-   ORDER BY u.id LIMIT 500;
+   ORDER BY u.id DESC LIMIT 5000; -- nombre y correo cifrados: la app descifra y filtra (tope de seguridad)
 END $$
 
 DELIMITER ;

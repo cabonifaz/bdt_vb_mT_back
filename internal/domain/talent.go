@@ -119,6 +119,7 @@ type Talent struct {
 	DocNumber      string             `json:"docNumber,omitempty"`
 	Email          string             `json:"email,omitempty"`
 	Phone          string             `json:"phone,omitempty"`
+	BirthDate      string             `json:"birthDate,omitempty"` // YYYY-MM-DD (cifrada en BD)
 	CountryID      *string            `json:"countryId,omitempty"`
 	Country        json.RawMessage    `json:"country,omitempty"`
 	City           *string            `json:"city,omitempty"`

@@ -154,6 +154,16 @@ check "quitar equipo propio" "$(code -X PATCH -H "$A" -H "$J" -d '{"hasEquipment
 check "equipo guardado" "$(code -H "$A" $API/api/v1/tenant/talents/$T >/dev/null; body | jget .hasEquipment)" false
 check "otro tenant no cambia la disponibilidad" "$(code -X PATCH -H "$O" -H "$J" -d '{"availabilityId":null}' $API/api/v1/tenant/talents/$T/availability)" 404
 
+echo "== DNI (RENIEC) y fecha de nacimiento"
+check "DNI con formato inválido" "$(code -H "$A" $API/api/v1/tenant/identity/dni/12ab)" 422
+DNIC=$(code -H "$A" $API/api/v1/tenant/identity/dni/46027897)
+check "consulta DNI: 503 sin token, 200/404 con proveedor" "$(case $DNIC in 200|404|503) echo ok;; *) echo $DNIC;; esac)" ok
+check "consulta DNI no se cachea" "$(curl -s -D - -o /dev/null -H "$A" $API/api/v1/tenant/identity/dni/46027897 | grep -ic 'cache-control: no-store')" 1
+T2=$(node -e "console.log(require('crypto').randomUUID())")
+check "fecha de nacimiento inválida" "$(code -X POST -H "$A" -H "$J" -d "{\"id\":\"$T2\",\"firstName\":\"Bea\",\"lastName\":\"Nac\",\"birthDate\":\"2024-01-01\"}" $API/api/v1/tenant/talents)" 422
+check "talento con fecha de nacimiento" "$(code -X POST -H "$A" -H "$J" -d "{\"id\":\"$T2\",\"firstName\":\"Bea\",\"lastName\":\"Nac\",\"birthDate\":\"1990-03-15\"}" $API/api/v1/tenant/talents)" 201
+check "fecha de nacimiento guardada (cifrada)" "$(code -H "$A" $API/api/v1/tenant/talents/$T2 >/dev/null; body | jget .birthDate)" 1990-03-15
+
 code -X PATCH -H "Authorization: Bearer $SA" -H "$J" -d '{"status":"CANCELLED"}' $API/api/v1/platform/tenants/$OID/status >/dev/null
 echo "== Archivar"
 check "archivar talento" "$(code -X PATCH -H "$A" -H "$J" -d '{"status":"ARCHIVED"}' $API/api/v1/tenant/talents/$T/status)" 204

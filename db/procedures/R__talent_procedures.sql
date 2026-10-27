@@ -146,7 +146,7 @@ BEGIN
   SET v_is_admin = EXISTS (SELECT 1 FROM v_user_permission WHERE user_id = p_actor_id AND code = 'tenant.users.manage');
 
   SELECT t.uuid, t.first_name, t.last_name, t.second_last_name, t.headline,
-         dt.uuid AS doc_type_uuid, t.doc_number_enc, t.email_enc, t.phone_enc,
+         dt.uuid AS doc_type_uuid, t.doc_number_enc, t.email_enc, t.phone_enc, t.birth_date_enc,
          c.uuid AS country_uuid, c.label_i18n AS country, t.city, t.linkedin_url, t.github_url, t.summary,
          av.uuid AS availability_uuid, t.has_equipment, IF(v_rates = 1, t.rates_enc, NULL) AS rates_enc, v_rates AS can_see_rates,
          pf.uuid AS photo_uuid, cf.uuid AS cv_uuid, t.avg_rating, t.status, t.source, t.version,
@@ -205,7 +205,7 @@ DROP PROCEDURE IF EXISTS sp_talent_upsert $$
 CREATE PROCEDURE sp_talent_upsert(IN p_actor_id BIGINT UNSIGNED, IN p_tenant_id BIGINT UNSIGNED, IN p_uuid CHAR(36),
   IN p_first_name VARCHAR(100), IN p_last_name VARCHAR(100), IN p_second_last_name VARCHAR(100), IN p_headline VARCHAR(150),
   IN p_doc_type_uuid CHAR(36), IN p_doc_enc VARBINARY(256), IN p_doc_bidx CHAR(64),
-  IN p_email_enc VARBINARY(512), IN p_email_bidx CHAR(64), IN p_phone_enc VARBINARY(256),
+  IN p_email_enc VARBINARY(512), IN p_email_bidx CHAR(64), IN p_phone_enc VARBINARY(256), IN p_birth_enc VARBINARY(256),
   IN p_country_uuid CHAR(36), IN p_city VARCHAR(120), IN p_linkedin VARCHAR(300), IN p_github VARCHAR(300),
   IN p_summary TEXT, IN p_availability_uuid CHAR(36), IN p_has_equipment TINYINT(1),
   IN p_rates_enc VARBINARY(2048), IN p_set_rates TINYINT(1), IN p_expected_version INT, IN p_source VARCHAR(20), IN p_ip VARCHAR(45))
@@ -252,10 +252,10 @@ BEGIN
 
   IF v_id IS NULL THEN
     INSERT INTO talent (uuid, tenant_id, first_name, last_name, second_last_name, headline, doc_type_item_id, doc_number_enc,
-                        doc_number_bidx, email_enc, email_bidx, phone_enc, country_item_id, city, linkedin_url, github_url,
+                        doc_number_bidx, email_enc, email_bidx, phone_enc, birth_date_enc, country_item_id, city, linkedin_url, github_url,
                         summary, availability_item_id, has_equipment, rates_enc, source, created_by)
     VALUES (p_uuid, p_tenant_id, TRIM(p_first_name), TRIM(p_last_name), NULLIF(TRIM(p_second_last_name), ''), NULLIF(TRIM(p_headline), ''),
-            v_doc_type, p_doc_enc, p_doc_bidx, p_email_enc, p_email_bidx, p_phone_enc, v_country, NULLIF(TRIM(p_city), ''),
+            v_doc_type, p_doc_enc, p_doc_bidx, p_email_enc, p_email_bidx, p_phone_enc, p_birth_enc, v_country, NULLIF(TRIM(p_city), ''),
             NULLIF(p_linkedin, ''), NULLIF(p_github, ''), p_summary, v_availability, p_has_equipment,
             IF(p_set_rates = 1, p_rates_enc, NULL), IFNULL(NULLIF(p_source, ''), 'MANUAL'), p_actor_id);
     SET v_id = LAST_INSERT_ID();
@@ -264,7 +264,7 @@ BEGIN
     UPDATE talent
        SET first_name = TRIM(p_first_name), last_name = TRIM(p_last_name), second_last_name = NULLIF(TRIM(p_second_last_name), ''),
            headline = NULLIF(TRIM(p_headline), ''), doc_type_item_id = v_doc_type, doc_number_enc = p_doc_enc,
-           doc_number_bidx = p_doc_bidx, email_enc = p_email_enc, email_bidx = p_email_bidx, phone_enc = p_phone_enc,
+           doc_number_bidx = p_doc_bidx, email_enc = p_email_enc, email_bidx = p_email_bidx, phone_enc = p_phone_enc, birth_date_enc = p_birth_enc,
            country_item_id = v_country, city = NULLIF(TRIM(p_city), ''), linkedin_url = NULLIF(p_linkedin, ''),
            github_url = NULLIF(p_github, ''), summary = p_summary, availability_item_id = v_availability,
            has_equipment = p_has_equipment, rates_enc = IF(p_set_rates = 1, p_rates_enc, rates_enc),

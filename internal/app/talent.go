@@ -46,6 +46,12 @@ func idOrNew(s string) (string, error) {
 	return strings.ToLower(s), nil
 }
 
+// validBirthDate: YYYY-MM-DD entre 1900 y hace 14 años.
+func validBirthDate(s string) bool {
+	d, err := time.Parse("2006-01-02", s)
+	return err == nil && d.Year() >= 1900 && d.Before(time.Now().AddDate(-14, 0, 0))
+}
+
 func maxLen(s *string, n int) bool { return s == nil || utf8.RuneCountInString(*s) <= n }
 
 func (s *TalentService) Search(ctx context.Context, p *domain.Principal, f ports.TalentFilter) (*domain.Page[domain.TalentSummary], error) {
@@ -91,6 +97,9 @@ func (s *TalentService) Get(ctx context.Context, p *domain.Principal, id string)
 	if t.Phone, err = s.Cipher.Decrypt(rec.PhoneEnc); err != nil {
 		return nil, err
 	}
+	if t.BirthDate, err = s.Cipher.Decrypt(rec.BirthEnc); err != nil {
+		return nil, err
+	}
 	if len(rec.RatesEnc) > 0 {
 		raw, err := s.Cipher.DecryptBytes(rec.RatesEnc)
 		if err != nil {
@@ -120,6 +129,7 @@ type TalentInput struct {
 	DocNumber       string        `json:"docNumber"`
 	Email           string        `json:"email"`
 	Phone           string        `json:"phone"`
+	BirthDate       string        `json:"birthDate"`
 	CountryID       *string       `json:"countryId"`
 	City            *string       `json:"city"`
 	LinkedinURL     *string       `json:"linkedinUrl"`
@@ -177,6 +187,14 @@ func (s *TalentService) Save(ctx context.Context, p *domain.Principal, ip string
 	}
 	if phone := strings.TrimSpace(in.Phone); phone != "" {
 		if w.PhoneEnc, err = s.Cipher.Encrypt(phone); err != nil {
+			return nil, err
+		}
+	}
+	if bd := strings.TrimSpace(in.BirthDate); bd != "" {
+		if !validBirthDate(bd) {
+			return nil, domain.NewError("INVALID_BIRTH_DATE")
+		}
+		if w.BirthEnc, err = s.Cipher.Encrypt(bd); err != nil {
 			return nil, err
 		}
 	}

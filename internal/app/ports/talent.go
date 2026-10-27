@@ -17,6 +17,7 @@ type TalentFilter struct {
 type TalentRecord struct {
 	domain.Talent
 	DocEnc, EmailEnc, PhoneEnc, RatesEnc []byte
+	BirthEnc                             []byte
 	FeedbackAuthorEnc                    [][]byte
 }
 
@@ -28,7 +29,7 @@ type TalentWrite struct {
 	DocBidx                             *string
 	EmailEnc                            []byte
 	EmailBidx                           *string
-	PhoneEnc                            []byte
+	PhoneEnc, BirthEnc                  []byte
 	CountryID, City, Linkedin, Github   *string
 	Summary, AvailabilityID             *string
 	HasEquipment                        *bool

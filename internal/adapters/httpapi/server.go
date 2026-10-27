@@ -31,6 +31,7 @@ type Deps struct {
 	Blacklist    *app.BlacklistService
 	Interviews   *app.InterviewService
 	Home         *app.HomeService
+	Identity     *app.IdentityService
 	Sync         ports.SyncRepository
 	Audit        ports.AuditRepository
 	Translations ports.TranslationRepository
@@ -101,6 +102,7 @@ func (s *Server) Handler() http.Handler {
 				r.With(s.requirePerm("tenant.translations.manage")).Put("/translations", s.upsertTranslation)
 				r.With(s.requirePerm("tenant.audit.read")).Get("/audit", s.listAudit)
 				r.With(s.requirePerm("talent.read")).Get("/home", s.homeSummary)
+				r.With(s.requirePerm("talent.write")).Get("/identity/dni/{dni}", s.lookupDNI)
 				r.Group(s.talentRoutes)
 				r.Group(s.blacklistRoutes)
 				r.Group(s.interviewRoutes)

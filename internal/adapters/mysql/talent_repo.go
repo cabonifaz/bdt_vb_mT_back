@@ -110,7 +110,7 @@ func (r TalentRepo) Get(ctx context.Context, m ports.Meta, tenantID uint64, uuid
 	var country []byte
 	var hasEq sql.NullBool
 	var rating sql.NullFloat64
-	if err := rs.One(&t.ID, &t.FirstName, &t.LastName, &second, &headline, &docType, &rec.DocEnc, &rec.EmailEnc, &rec.PhoneEnc,
+	if err := rs.One(&t.ID, &t.FirstName, &t.LastName, &second, &headline, &docType, &rec.DocEnc, &rec.EmailEnc, &rec.PhoneEnc, &rec.BirthEnc,
 		&countryID, &country, &city, &linkedin, &github, &summary, &availability, &hasEq, &rec.RatesEnc, &t.CanSeeRates,
 		&photo, &cv, &rating, &t.Status, &t.Source, &t.Version, &t.CreatedAt, &t.UpdatedAt); err != nil {
 		return nil, err
@@ -213,7 +213,7 @@ func (r TalentRepo) Upsert(ctx context.Context, m ports.Meta, tenantID uint64, w
 	}
 	rs, err := r.call(ctx, "sp_talent_upsert", m.ActorID, tenantID, w.UUID, w.FirstName, w.LastName, optStr(w.SecondLastName),
 		optStr(w.Headline), optStr(w.DocTypeID), optBytes(w.DocEnc), optStr(w.DocBidx), optBytes(w.EmailEnc), optStr(w.EmailBidx),
-		optBytes(w.PhoneEnc), optStr(w.CountryID), optStr(w.City), optStr(w.Linkedin), optStr(w.Github), optStr(w.Summary),
+		optBytes(w.PhoneEnc), optBytes(w.BirthEnc), optStr(w.CountryID), optStr(w.City), optStr(w.Linkedin), optStr(w.Github), optStr(w.Summary),
 		optStr(w.AvailabilityID), optBool(w.HasEquipment), optBytes(w.RatesEnc), w.SetRates, ev, nullStr(w.Source), nullStr(m.IP))
 	if err != nil {
 		return nil, err

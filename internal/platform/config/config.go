@@ -33,6 +33,9 @@ type Config struct {
 	StoragePath     string
 	DefaultTimezone string
 
+	// Consulta de DNI (RENIEC): decolecta | factiliza; sin token la función queda deshabilitada
+	DNIProvider, DNIToken, DNIURL string
+
 	RateGeneralPerMin int
 	RateAuthPerMin    int
 }
@@ -58,6 +61,9 @@ func Load() (Config, error) {
 		InviteTTL:         minutes("INVITATION_MINUTES", 60*72),
 		StoragePath:       get("STORAGE_PATH", "./data/files"),
 		DefaultTimezone:   get("DEFAULT_TIMEZONE", "America/Lima"),
+		DNIProvider:       get("DNI_API_PROVIDER", "decolecta"),
+		DNIToken:          os.Getenv("DNI_API_TOKEN"),
+		DNIURL:            os.Getenv("DNI_API_URL"),
 		RateGeneralPerMin: intVal("RATE_LIMIT_PER_MIN", 600),
 		RateAuthPerMin:    intVal("RATE_LIMIT_AUTH_PER_MIN", 10),
 	}
