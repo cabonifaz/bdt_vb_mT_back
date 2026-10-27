@@ -64,3 +64,11 @@ for row in "${DATA[@]}"; do
   n=$((n+1))
 done
 echo "talentos demo cargados: $n"
+
+# 3) clientes de demostración (uuid determinista: no se duplican)
+for c in "Banco Andino|20100000001|Av. Javier Prado Este 1000, San Isidro" "Retail Digital|20200000002|Av. Larco 345, Miraflores" "Seguros del Sur|20300000003|Calle Las Begonias 450, San Isidro" "Telco Andina|20400000004|Av. Arequipa 2450, Lince"; do
+  IFS='|' read -r CN CR CA <<<"$c"
+  CID=$(node -e "const h=require('crypto').createHash('sha1').update('demo-client:'+process.argv[1]).digest('hex');console.log(h.slice(0,8)+'-'+h.slice(8,12)+'-5'+h.slice(13,16)+'-a'+h.slice(17,20)+'-'+h.slice(20,32))" "$TENANT$CN")
+  post PUT /api/v1/tenant/masters/items "$AD" "{\"table\":\"CLIENT\",\"id\":\"$CID\",\"code\":\"DEMO-$CR\",\"label\":{\"es\":\"$CN\",\"en\":\"$CN\"},\"str1\":\"$CR\",\"str2\":\"$CA\",\"str3\":\"https://maps.app.goo.gl/demo\"}" >/dev/null
+done
+echo "clientes demo cargados"
