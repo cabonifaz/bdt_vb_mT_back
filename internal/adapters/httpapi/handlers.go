@@ -148,7 +148,7 @@ func (s *Server) publicTenant(w http.ResponseWriter, r *http.Request) {
 		s.writeErr(w, r, err)
 		return
 	}
-	w.Header().Set("Cache-Control", "public, max-age=300")
+	w.Header().Set("Cache-Control", "no-cache") // el branding cambia al guardarse: siempre revalidar
 	writeJSON(w, http.StatusOK, b)
 }
 
@@ -168,7 +168,7 @@ func (s *Server) publicTranslations(w http.ResponseWriter, r *http.Request) {
 		s.writeErr(w, r, err)
 		return
 	}
-	w.Header().Set("Cache-Control", "public, max-age=300")
+	w.Header().Set("Cache-Control", "no-cache") // el branding cambia al guardarse: siempre revalidar
 	writeJSON(w, http.StatusOK, m)
 }
 

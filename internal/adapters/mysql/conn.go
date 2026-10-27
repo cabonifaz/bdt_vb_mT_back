@@ -38,11 +38,13 @@ func Open(ctx context.Context, c ConnConfig) (*sql.DB, error) {
 		return nil, err
 	}
 	if c.MaxOpen == 0 {
-		c.MaxOpen = 15
+		c.MaxOpen = 10 // el servidor es compartido (max_connections=151)
 	}
 	db.SetMaxOpenConns(c.MaxOpen)
-	db.SetMaxIdleConns(c.MaxOpen / 3)
-	db.SetConnMaxLifetime(30 * time.Minute)
+	db.SetMaxIdleConns(c.MaxOpen/3 + 1)
+	// el servidor cierra conexiones inactivas a los 60 s (wait_timeout): soltarlas antes
+	db.SetConnMaxIdleTime(30 * time.Second)
+	db.SetConnMaxLifetime(5 * time.Minute)
 	pctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	if err := db.PingContext(pctx); err != nil {
