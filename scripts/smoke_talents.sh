@@ -25,15 +25,16 @@ mkuser() {
 }
 AD=$(mkuser admin TENANT_ADMIN); RC=$(mkuser reclu RECRUITER)
 A="Authorization: Bearer $AD"; R="Authorization: Bearer $RC"
-code -H "$A" "$API/api/v1/masters/items?tables=LANGUAGE,LANGUAGE_LEVEL,TECH_SKILL,SOFT_SKILL,COUNTRY,DOC_IDENTITY_TYPE,ACADEMIC_GRADE,CURRENCY" >/dev/null
+code -H "$A" "$API/api/v1/masters/items?tables=LANGUAGE,LANGUAGE_LEVEL,TECH_SKILL,SOFT_SKILL,COUNTRY,DOC_IDENTITY_TYPE,ACADEMIC_GRADE,CURRENCY,TALENT_AVAILABILITY" >/dev/null
 M=$(body)
 mid() { echo "$M" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const a=JSON.parse(d);console.log(a.find(i=>i.table===process.argv[1]&&i.code===process.argv[2]).id)})" "$1" "$2"; }
 EN=$(mid LANGUAGE EN); ADV=$(mid LANGUAGE_LEVEL ADVANCED); INT=$(mid LANGUAGE_LEVEL INTERMEDIATE); JAVA=$(mid TECH_SKILL JAVA); REACT=$(mid TECH_SKILL REACT)
 TEAM=$(mid SOFT_SKILL TEAMWORK); PE=$(mid COUNTRY PE); DNI=$(mid DOC_IDENTITY_TYPE DNI); DEG=$(mid ACADEMIC_GRADE DEGREE); PEN=$(mid CURRENCY PEN)
+IMM=$(mid TALENT_AVAILABILITY IMMEDIATE); M1=$(mid TALENT_AVAILABILITY MONTH_1)
 
 echo "== Alta y ficha"
 T=$(uuid); EMAIL="ana.$RANDOM$RANDOM@correo.test"; DOCN="$RANDOM$RANDOM"
-TAL="{\"id\":\"$T\",\"firstName\":\"Ana\",\"lastName\":\"Quispe\",\"secondLastName\":\"Rojas\",\"headline\":\"Desarrolladora Java Senior\",\"docTypeId\":\"$DNI\",\"docNumber\":\"$DOCN\",\"email\":\"$EMAIL\",\"phone\":\"987654321\",\"countryId\":\"$PE\",\"city\":\"Lima\",\"linkedinUrl\":\"https://www.linkedin.com/in/ana\",\"summary\":\"Backend con 8 años\",\"availability\":\"Inmediata\",\"hasEquipment\":true,\"rates\":{\"payrollMin\":6000,\"payrollMax\":8000,\"payrollCurrencyId\":\"$PEN\"}}"
+TAL="{\"id\":\"$T\",\"firstName\":\"Ana\",\"lastName\":\"Quispe\",\"secondLastName\":\"Rojas\",\"headline\":\"Desarrolladora Java Senior\",\"docTypeId\":\"$DNI\",\"docNumber\":\"$DOCN\",\"email\":\"$EMAIL\",\"phone\":\"987654321\",\"countryId\":\"$PE\",\"city\":\"Lima\",\"linkedinUrl\":\"https://www.linkedin.com/in/ana\",\"summary\":\"Backend con 8 años\",\"availabilityId\":\"$IMM\",\"hasEquipment\":true,\"rates\":{\"payrollMin\":6000,\"payrollMax\":8000,\"payrollCurrencyId\":\"$PEN\"}}"
 check "reclutador no puede fijar tarifas" "$(code -X POST -H "$R" -H "$J" -d "$TAL" $API/api/v1/tenant/talents)" 403
 check "admin crea talento" "$(code -X POST -H "$A" -H "$J" -d "$TAL" $API/api/v1/tenant/talents)" 201
 check "reenviar misma alta no duplica (upsert por uuid)" "$(code -X POST -H "$A" -H "$J" -d "$TAL" $API/api/v1/tenant/talents)" 200
@@ -144,8 +145,16 @@ check "otro tenant no modifica el talento" "$(code -X PUT -H "$O" -H "$J" -d '{"
 check "no se comparte con usuarios de otro tenant" "$(code -X PUT -H "$R" -H "$J" -d "{\"permission\":\"VIEW\"}" $API/api/v1/tenant/collections/$C/shares/$(curl -s -H "$O" $API/api/v1/auth/me | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>console.log(JSON.parse(d).id))"))" 422
 check "otro tenant no ve en búsqueda" "$(srch "$O" "{\"search\":\"quispe\"}")" 200
 check "lista vacía" "$(body | jget .total)" 0
-code -X PATCH -H "Authorization: Bearer $SA" -H "$J" -d '{"status":"CANCELLED"}' $API/api/v1/platform/tenants/$OID/status >/dev/null
 
+echo "== Edición rápida (disponibilidad y equipo)"
+check "cambiar disponibilidad" "$(code -X PATCH -H "$A" -H "$J" -d "{\"availabilityId\":\"$M1\"}" $API/api/v1/tenant/talents/$T/availability)" 204
+check "disponibilidad guardada" "$(code -H "$A" $API/api/v1/tenant/talents/$T >/dev/null; body | jget .availabilityId)" "$M1"
+check "disponibilidad inválida" "$(code -X PATCH -H "$A" -H "$J" -d "{\"availabilityId\":\"$PE\"}" $API/api/v1/tenant/talents/$T/availability)" 422
+check "quitar equipo propio" "$(code -X PATCH -H "$A" -H "$J" -d '{"hasEquipment":false}' $API/api/v1/tenant/talents/$T/equipment)" 204
+check "equipo guardado" "$(code -H "$A" $API/api/v1/tenant/talents/$T >/dev/null; body | jget .hasEquipment)" false
+check "otro tenant no cambia la disponibilidad" "$(code -X PATCH -H "$O" -H "$J" -d '{"availabilityId":null}' $API/api/v1/tenant/talents/$T/availability)" 404
+
+code -X PATCH -H "Authorization: Bearer $SA" -H "$J" -d '{"status":"CANCELLED"}' $API/api/v1/platform/tenants/$OID/status >/dev/null
 echo "== Archivar"
 check "archivar talento" "$(code -X PATCH -H "$A" -H "$J" -d '{"status":"ARCHIVED"}' $API/api/v1/tenant/talents/$T/status)" 204
 check "archivado no sale en búsqueda activa" "$(srch "$R" "{\"search\":\"quispe\"}")" 200

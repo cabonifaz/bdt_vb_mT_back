@@ -33,6 +33,8 @@ func (s *Server) talentRoutes(r chi.Router) {
 	r.With(read).Get("/talents/{id}", s.getTalent)
 	r.With(write).Put("/talents/{id}", s.saveTalent)
 	r.With(write).Patch("/talents/{id}/status", s.setTalentStatus)
+	r.With(write).Patch("/talents/{id}/availability", s.setTalentAvailability)
+	r.With(write).Patch("/talents/{id}/equipment", s.setTalentEquipment)
 	r.With(write).Put("/talents/{id}/tech-skills", s.saveTechSkill)
 	r.With(write).Post("/talents/{id}/soft-skills", s.addSoftSkill)
 	r.With(write).Put("/talents/{id}/experiences", s.saveExperience)
@@ -185,6 +187,28 @@ func (s *Server) setTalentStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) setTalentAvailability(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		AvailabilityID *string `json:"availabilityId"`
+	}
+	if err := decode(w, r, &in); err != nil {
+		s.writeErr(w, r, err)
+		return
+	}
+	s.noContent(w, r, s.Talents.SetAvailability(r.Context(), principal(r), s.clientIP(r), chi.URLParam(r, "id"), in.AvailabilityID))
+}
+
+func (s *Server) setTalentEquipment(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		HasEquipment *bool `json:"hasEquipment"`
+	}
+	if err := decode(w, r, &in); err != nil {
+		s.writeErr(w, r, err)
+		return
+	}
+	s.noContent(w, r, s.Talents.SetEquipment(r.Context(), principal(r), s.clientIP(r), chi.URLParam(r, "id"), in.HasEquipment))
 }
 
 func (s *Server) noContent(w http.ResponseWriter, r *http.Request, err error) {

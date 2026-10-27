@@ -28,9 +28,10 @@ else
 fi
 
 # 2) talentos de demostración
-M=$(curl -s -H "Authorization: Bearer $AD" "$API/api/v1/masters/items?tables=LANGUAGE,LANGUAGE_LEVEL,TECH_SKILL,SOFT_SKILL,COUNTRY,ACADEMIC_GRADE,CURRENCY,DOC_IDENTITY_TYPE")
+M=$(curl -s -H "Authorization: Bearer $AD" "$API/api/v1/masters/items?tables=LANGUAGE,LANGUAGE_LEVEL,TECH_SKILL,SOFT_SKILL,COUNTRY,ACADEMIC_GRADE,CURRENCY,DOC_IDENTITY_TYPE,TALENT_AVAILABILITY")
 mid() { echo "$M" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const a=JSON.parse(d);const i=a.find(i=>i.table===process.argv[1]&&i.code===process.argv[2]);console.log(i?i.id:'')})" "$1" "$2"; }
 EN=$(mid LANGUAGE EN); PE=$(mid COUNTRY PE); CO=$(mid COUNTRY CO); PEN=$(mid CURRENCY PEN); DEG=$(mid ACADEMIC_GRADE DEGREE); BACH=$(mid ACADEMIC_GRADE BACHELOR)
+IMM=$(mid TALENT_AVAILABILITY IMMEDIATE)
 
 #   nombre|apellido|apellido2|puesto|país|ciudad|skills(code:años,...)|soft|nivelEN|empresa|cargo|inicio|carrera|institución|planillaMin|planillaMax|estrellas
 DATA=(
@@ -50,7 +51,7 @@ for row in "${DATA[@]}"; do
   ID=$(node -e "const h=require('crypto').createHash('sha1').update('demo:'+process.argv[1]).digest('hex');console.log(h.slice(0,8)+'-'+h.slice(8,12)+'-5'+h.slice(13,16)+'-a'+h.slice(17,20)+'-'+h.slice(20,32))" "$TENANT$FN$LN")
   CID=$(mid COUNTRY "$CC")
   EMAIL=$(echo "$FN.$LN" | iconv -f utf-8 -t ascii//TRANSLIT 2>/dev/null | tr 'A-Z' 'a-z' | tr -cd 'a-z.')@demo.test
-  post POST /api/v1/tenant/talents "$AD" "{\"id\":\"$ID\",\"firstName\":\"$FN\",\"lastName\":\"$LN\",\"secondLastName\":\"$LN2\",\"headline\":\"$HL\",\"email\":\"$EMAIL\",\"phone\":\"9$((10000000 + RANDOM*100))\",\"countryId\":\"$CID\",\"city\":\"$CITY\",\"summary\":\"Perfil de demostración. $HL con experiencia en proyectos de transformación digital.\",\"availability\":\"Inmediata\",\"hasEquipment\":true,\"linkedinUrl\":\"https://www.linkedin.com/in/demo\",\"rates\":{\"payrollMin\":$PMIN,\"payrollMax\":$PMAX,\"payrollCurrencyId\":\"$PEN\"}}" >/dev/null
+  post POST /api/v1/tenant/talents "$AD" "{\"id\":\"$ID\",\"firstName\":\"$FN\",\"lastName\":\"$LN\",\"secondLastName\":\"$LN2\",\"headline\":\"$HL\",\"email\":\"$EMAIL\",\"phone\":\"9$((10000000 + RANDOM*100))\",\"countryId\":\"$CID\",\"city\":\"$CITY\",\"summary\":\"Perfil de demostración. $HL con experiencia en proyectos de transformación digital.\",\"availabilityId\":\"$IMM\",\"hasEquipment\":true,\"linkedinUrl\":\"https://www.linkedin.com/in/demo\",\"rates\":{\"payrollMin\":$PMIN,\"payrollMax\":$PMAX,\"payrollCurrencyId\":\"$PEN\"}}" >/dev/null
   for s in ${SKILLS//,/ }; do
     post PUT "/api/v1/tenant/talents/$ID/tech-skills" "$AD" "{\"skillId\":\"$(mid TECH_SKILL "${s%%:*}")\",\"years\":${s##*:}}" >/dev/null
   done

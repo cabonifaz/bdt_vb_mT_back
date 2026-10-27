@@ -125,7 +125,7 @@ type Talent struct {
 	LinkedinURL    *string            `json:"linkedinUrl,omitempty"`
 	GithubURL      *string            `json:"githubUrl,omitempty"`
 	Summary        *string            `json:"summary,omitempty"`
-	Availability   *string            `json:"availability,omitempty"`
+	AvailabilityID *string            `json:"availabilityId,omitempty"`
 	HasEquipment   *bool              `json:"hasEquipment,omitempty"`
 	Rates          *Rates             `json:"rates,omitempty"`
 	CanSeeRates    bool               `json:"canSeeRates"`

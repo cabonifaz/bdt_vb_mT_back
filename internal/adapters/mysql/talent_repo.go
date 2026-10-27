@@ -116,7 +116,7 @@ func (r TalentRepo) Get(ctx context.Context, m ports.Meta, tenantID uint64, uuid
 		return nil, err
 	}
 	t.SecondLastName, t.Headline, t.DocTypeID, t.CountryID, t.City = strPtr(second), strPtr(headline), strPtr(docType), strPtr(countryID), strPtr(city)
-	t.LinkedinURL, t.GithubURL, t.Summary, t.Availability = strPtr(linkedin), strPtr(github), strPtr(summary), strPtr(availability)
+	t.LinkedinURL, t.GithubURL, t.Summary, t.AvailabilityID = strPtr(linkedin), strPtr(github), strPtr(summary), strPtr(availability)
 	t.PhotoID, t.CvID, t.AvgRating = strPtr(photo), strPtr(cv), fPtr(rating)
 	if len(country) > 0 {
 		t.Country = json.RawMessage(country)
@@ -214,7 +214,7 @@ func (r TalentRepo) Upsert(ctx context.Context, m ports.Meta, tenantID uint64, w
 	rs, err := r.call(ctx, "sp_talent_upsert", m.ActorID, tenantID, w.UUID, w.FirstName, w.LastName, optStr(w.SecondLastName),
 		optStr(w.Headline), optStr(w.DocTypeID), optBytes(w.DocEnc), optStr(w.DocBidx), optBytes(w.EmailEnc), optStr(w.EmailBidx),
 		optBytes(w.PhoneEnc), optStr(w.CountryID), optStr(w.City), optStr(w.Linkedin), optStr(w.Github), optStr(w.Summary),
-		optStr(w.Availability), optBool(w.HasEquipment), optBytes(w.RatesEnc), w.SetRates, ev, nullStr(w.Source), nullStr(m.IP))
+		optStr(w.AvailabilityID), optBool(w.HasEquipment), optBytes(w.RatesEnc), w.SetRates, ev, nullStr(w.Source), nullStr(m.IP))
 	if err != nil {
 		return nil, err
 	}
@@ -234,6 +234,14 @@ func (r TalentRepo) Upsert(ctx context.Context, m ports.Meta, tenantID uint64, w
 
 func (r TalentRepo) SetStatus(ctx context.Context, m ports.Meta, tenantID uint64, uuid, status string) error {
 	return r.exec(ctx, "sp_talent_set_status", m.ActorID, tenantID, uuid, status, nullStr(m.IP))
+}
+
+func (r TalentRepo) SetAvailability(ctx context.Context, m ports.Meta, tenantID uint64, uuid string, availabilityID *string) error {
+	return r.exec(ctx, "sp_talent_set_availability", m.ActorID, tenantID, uuid, optStr(availabilityID), nullStr(m.IP))
+}
+
+func (r TalentRepo) SetEquipment(ctx context.Context, m ports.Meta, tenantID uint64, uuid string, hasEquipment *bool) error {
+	return r.exec(ctx, "sp_talent_set_equipment", m.ActorID, tenantID, uuid, optBool(hasEquipment), nullStr(m.IP))
 }
 
 func (r TalentRepo) EnsureSkill(ctx context.Context, m ports.Meta, tenantID uint64, table, uuid, label string) (*domain.SkillRef, error) {

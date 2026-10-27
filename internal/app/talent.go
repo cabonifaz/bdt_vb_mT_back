@@ -125,7 +125,7 @@ type TalentInput struct {
 	LinkedinURL     *string       `json:"linkedinUrl"`
 	GithubURL       *string       `json:"githubUrl"`
 	Summary         *string       `json:"summary"`
-	Availability    *string       `json:"availability"`
+	AvailabilityID  *string       `json:"availabilityId"`
 	HasEquipment    *bool         `json:"hasEquipment"`
 	Rates           *domain.Rates `json:"rates"`
 	ExpectedVersion *int          `json:"expectedVersion"`
@@ -142,12 +142,12 @@ func (s *TalentService) Save(ctx context.Context, p *domain.Principal, ip string
 	}
 	in.FirstName, in.LastName = strings.TrimSpace(in.FirstName), strings.TrimSpace(in.LastName)
 	if in.FirstName == "" || in.LastName == "" || utf8.RuneCountInString(in.FirstName) > 100 || utf8.RuneCountInString(in.LastName) > 100 ||
-		!maxLen(in.SecondLastName, 100) || !maxLen(in.Headline, 150) || !maxLen(in.City, 120) || !maxLen(in.Availability, 150) ||
+		!maxLen(in.SecondLastName, 100) || !maxLen(in.Headline, 150) || !maxLen(in.City, 120) ||
 		!maxLen(in.Summary, 5000) || !maxLen(in.LinkedinURL, 300) || !maxLen(in.GithubURL, 300) ||
 		len(in.DocNumber) > 30 || len(in.Phone) > 30 {
 		return nil, domain.ErrValidation
 	}
-	for _, ref := range []*string{in.DocTypeID, in.CountryID} {
+	for _, ref := range []*string{in.DocTypeID, in.CountryID, in.AvailabilityID} {
 		if ref != nil && *ref != "" && !validUUID(*ref) {
 			return nil, domain.ErrValidation
 		}
@@ -155,7 +155,7 @@ func (s *TalentService) Save(ctx context.Context, p *domain.Principal, ip string
 	w := ports.TalentWrite{
 		UUID: id, FirstName: in.FirstName, LastName: in.LastName, SecondLastName: in.SecondLastName, Headline: in.Headline,
 		DocTypeID: in.DocTypeID, CountryID: in.CountryID, City: in.City, Linkedin: in.LinkedinURL, Github: in.GithubURL,
-		Summary: in.Summary, Availability: in.Availability, HasEquipment: in.HasEquipment, ExpectedVersion: in.ExpectedVersion,
+		Summary: in.Summary, AvailabilityID: in.AvailabilityID, HasEquipment: in.HasEquipment, ExpectedVersion: in.ExpectedVersion,
 		Source: "MANUAL",
 	}
 	if email := strings.ToLower(strings.TrimSpace(in.Email)); email != "" {
@@ -200,6 +200,29 @@ func (s *TalentService) SetStatus(ctx context.Context, p *domain.Principal, ip, 
 		return err
 	}
 	return s.Repo.SetStatus(ctx, meta(p, ip), tid, id, status)
+}
+
+// SetAvailability y SetEquipment: edición rápida desde la ficha (nil = sin dato)
+func (s *TalentService) SetAvailability(ctx context.Context, p *domain.Principal, ip, id string, availabilityID *string) error {
+	tid, err := tenantOf(p)
+	if err != nil {
+		return err
+	}
+	if !validUUID(id) || (availabilityID != nil && *availabilityID != "" && !validUUID(*availabilityID)) {
+		return domain.ErrValidation
+	}
+	return s.Repo.SetAvailability(ctx, meta(p, ip), tid, id, availabilityID)
+}
+
+func (s *TalentService) SetEquipment(ctx context.Context, p *domain.Principal, ip, id string, hasEquipment *bool) error {
+	tid, err := tenantOf(p)
+	if err != nil {
+		return err
+	}
+	if !validUUID(id) {
+		return domain.ErrValidation
+	}
+	return s.Repo.SetEquipment(ctx, meta(p, ip), tid, id, hasEquipment)
 }
 
 // ---------------------------------------------------------------- Secciones

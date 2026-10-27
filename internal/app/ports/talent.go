@@ -30,7 +30,7 @@ type TalentWrite struct {
 	EmailBidx                           *string
 	PhoneEnc                            []byte
 	CountryID, City, Linkedin, Github   *string
-	Summary, Availability               *string
+	Summary, AvailabilityID             *string
 	HasEquipment                        *bool
 	RatesEnc                            []byte
 	SetRates                            bool
@@ -49,6 +49,8 @@ type TalentRepository interface {
 	Get(ctx context.Context, m Meta, tenantID uint64, uuid string) (*TalentRecord, error)
 	Upsert(ctx context.Context, m Meta, tenantID uint64, w TalentWrite) (*TalentWriteResult, error)
 	SetStatus(ctx context.Context, m Meta, tenantID uint64, uuid, status string) error
+	SetAvailability(ctx context.Context, m Meta, tenantID uint64, uuid string, availabilityID *string) error
+	SetEquipment(ctx context.Context, m Meta, tenantID uint64, uuid string, hasEquipment *bool) error
 
 	EnsureSkill(ctx context.Context, m Meta, tenantID uint64, table, uuid, label string) (*domain.SkillRef, error)
 	UpsertTechSkill(ctx context.Context, m Meta, tenantID uint64, talentUUID, uuid, skillUUID string, years float64) error
