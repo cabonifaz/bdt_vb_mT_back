@@ -23,12 +23,12 @@ mkuser() {
   code -H "$J" -d "{\"tenant\":\"fractal\",\"email\":\"$email\",\"password\":\"$pw\"}" $API/api/v1/auth/login >/dev/null
   body | jget .accessToken
 }
-AD=$(mkuser admin TENANT_ADMIN); RC=$(mkuser reclu RECRUITER); VW=$(mkuser consulta VIEWER)
-A="Authorization: Bearer $AD"; R="Authorization: Bearer $RC"; V="Authorization: Bearer $VW"
+AD=$(mkuser admin TENANT_ADMIN); RC=$(mkuser reclu RECRUITER); VW=$(mkuser consulta VIEWER); LD=$(mkuser jefe SELECTION_LEAD)
+A="Authorization: Bearer $AD"; R="Authorization: Bearer $RC"; V="Authorization: Bearer $VW"; L="Authorization: Bearer $LD"
 code -H "$A" "$API/api/v1/masters/items?tables=RQ_STATUS,RQ_PROFILE,TIME_UNIT,WORK_MODALITY,CONTRACT_MODALITY,CANDIDATE_STAGE,CURRENCY,TECH_SKILL,ACADEMIC_GRADE" >/dev/null
 M=$(body)
 mid() { echo "$M" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const a=JSON.parse(d);const x=a.find(i=>i.table===process.argv[1]&&i.code===process.argv[2]);console.log(x?x.id:'')})" "$1" "$2"; }
-REG=$(mid RQ_STATUS REGISTERED); ASG=$(mid RQ_STATUS ASSIGNED); CAN=$(mid RQ_STATUS CANCELLED); JAVA_P=$(mid RQ_PROFILE JAVA_DEV); QA_P=$(mid RQ_PROFILE QA_ANALYST)
+REG=$(mid RQ_STATUS REGISTERED); ASG=$(mid RQ_STATUS ASSIGNED); CAN=$(mid RQ_STATUS CANCELLED); JAVA_P=$(mid RQ_PROFILE JAVA_DEV); QA_P=$(mid RQ_PROFILE QA_ANALYST); SEL=$(mid RQ_STATUS IN_SELECTION)
 MONTHS=$(mid TIME_UNIT MONTHS); REMOTE=$(mid WORK_MODALITY REMOTE); SERV=$(mid CONTRACT_MODALITY SERVICES); PEN=$(mid CURRENCY PEN)
 JAVA=$(mid TECH_SKILL JAVA); BACH=$(mid ACADEMIC_GRADE BACHELOR)
 OBS=$(mid CANDIDATE_STAGE OBSERVED); DATA=$(mid CANDIDATE_STAGE DATA_COMPLETE); CONF=$(mid CANDIDATE_STAGE CONFIRMED)
@@ -70,7 +70,7 @@ check "reclutador: sin banda salarial" "$(echo "$RR" | js 'o.billing==null && o.
 
 echo "== Tablero"
 check "aparece en el tablero" "$(req POST /api/v1/tenant/requirements/board "$V" "{\"scope\":\"ALL\",\"search\":\"$CODE\"}" >/dev/null; body | js 'o.cards.length')" 1
-check "con vacantes y cubiertas" "$(body | js "o[0].vacancies+'/'+o[0].covered")" "3/0"
+check "con vacantes y cubiertas" "$(body | js "o.cards[0].vacancies+'/'+o.cards[0].covered")" "3/0"
 check "mover a Asignado" "$(req PATCH /api/v1/tenant/requirements/$RQ/status "$A" "{\"statusId\":\"$ASG\",\"order\":1}")" 200
 check "estado anterior" "$(body | js 'o.previousStatus')" REGISTERED
 check "consulta no mueve" "$(req PATCH /api/v1/tenant/requirements/$RQ/status "$V" "{\"statusId\":\"$REG\"}")" 403
@@ -100,10 +100,22 @@ check "cancelar" "$(req PATCH /api/v1/tenant/requirements/$RQ/status "$A" "{\"st
 check "cerrado: no se agregan candidatos" "$(req POST /api/v1/tenant/requirements/$RQ/candidates "$R" "{\"id\":\"$(uuid)\",\"talentId\":\"$T2\",\"vacancyId\":\"$V1\"}")" 409
 check "cerrado: no se mueven" "$(req PATCH /api/v1/tenant/requirements/candidates/$C1 "$R" "{\"stageId\":\"$DATA\"}")" 409
 
+echo "== Reapertura (jefe de selección)"
+check "mover de cerrado a abierto: exige reabrir" "$(req PATCH /api/v1/tenant/requirements/$RQ/status "$A" "{\"statusId\":\"$ASG\"}")" 409
+check "el admin no reabre" "$(req POST /api/v1/tenant/requirements/$RQ/reopen "$A" "{\"reason\":\"RESIGNATION\"}")" 403
+check "motivo obligatorio" "$(req POST /api/v1/tenant/requirements/$RQ/reopen "$L" "{\"reason\":\"OTRO\"}")" 422
+check "el jefe reabre" "$(req POST /api/v1/tenant/requirements/$RQ/reopen "$L" "{\"reason\":\"MORE_VACANCIES\",\"notes\":\"2 mas\"}")" 200
+check "vuelve a En selección" "$(body | js o.status)" IN_SELECTION
+check "ya abierto: no se reabre" "$(req POST /api/v1/tenant/requirements/$RQ/reopen "$L" "{\"reason\":\"RESIGNATION\"}")" 409
+check "queda en el historial" "$(code -H "$V" $API/api/v1/tenant/requirements/$RQ >/dev/null; body | js "o.reopens.map(r=>r.reason+\":\"+r.notes).join()")" "MORE_VACANCIES:2 mas"
+T3=$(uuid); code -X POST -H "$A" -H "$J" -d "{\"id\":\"$T3\",\"firstName\":\"Cand\",\"lastName\":\"Tres$RANDOM$RANDOM\"}" $API/api/v1/tenant/talents >/dev/null
+check "abierto otra vez: se agregan candidatos" "$(req POST /api/v1/tenant/requirements/$RQ/candidates "$R" "{\"id\":\"$(uuid)\",\"talentId\":\"$T3\",\"vacancyId\":\"$V2\"}")" 201
+check "el jefe crea RQ" "$(req PUT /api/v1/tenant/requirements/$(uuid) "$L" "{\"clientId\":\"$CL\",\"title\":\"Del jefe\",\"statusId\":\"$REG\",\"requestDate\":\"2026-10-01\",\"dueDate\":\"2026-12-01\",\"vacancies\":[{\"id\":\"$(uuid)\",\"profileId\":\"$QA_P\",\"quantity\":1}]}")" 201
+
 echo "== Notificaciones de RQ"
 code -H "$R" "$API/api/v1/tenant/notifications?limit=50" >/dev/null; NR=$(body)
-check "el reclutador recibe el alta (agrupada con los cambios)" "$(echo "$NR" | js "(o.items.find(i=>i.entityId==='$RQ')||{}).type")" RQ_CREATED
-check "con el código" "$(echo "$NR" | js "(o.items.find(i=>i.entityId==='$RQ')||{payload:{}}).payload.code")" "$CODE"
+check "el reclutador recibe el alta (agrupada con los cambios)" "$(echo "$NR" | js "(o.items.find(i=>i.entityId==='$RQ'&&i.type==='RQ_CREATED')||{}).type")" RQ_CREATED
+check "con el código" "$(echo "$NR" | js "(o.items.find(i=>i.entityId==='$RQ'&&i.type==='RQ_CREATED')||{payload:{}}).payload.code")" "$CODE"
 
 echo "== Seguridad"
 check "sin sesión" "$(code -X POST -H "$J" -d '{}' $API/api/v1/tenant/requirements/board)" 401
