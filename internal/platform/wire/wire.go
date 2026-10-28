@@ -12,6 +12,7 @@ import (
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/adapters/identity"
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/adapters/mailer"
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/adapters/mysql"
+	"github.com/cabonifaz/bdt_vb_mT_back/internal/adapters/push"
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/adapters/security"
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/adapters/storage"
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/app"
@@ -59,6 +60,8 @@ func Build(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, erro
 	fileRepo := mysql.FileRepo{Store: store}
 
 	usageRepo := mysql.UsageRepo{Store: store}
+	notifications := &app.NotificationService{Repo: mysql.NotificationRepo{Store: store}, Cipher: cipher,
+		Push: push.New(cfg.VAPIDPublic, cfg.VAPIDPrivate, cfg.VAPIDSubject)}
 	openAI := ai.NewOpenAI(cfg.OpenAIKey, cfg.OpenAIModel)
 	srv := httpapi.NewServer(httpapi.Config{CORSOrigins: cfg.CORSOrigins, TrustProxy: cfg.TrustProxy,
 		CookieSecure: !cfg.IsLocal(), RateGeneral: cfg.RateGeneralPerMin, RateAuth: cfg.RateAuthPerMin}, log, httpapi.Deps{
@@ -69,12 +72,13 @@ func Build(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, erro
 		Masters: &app.MasterService{Repo: mysql.MasterRepo{Store: store}},
 		Files:   &app.FileService{Repo: fileRepo, Storage: files, Tenants: tenantRepo},
 		Talents: &app.TalentService{Repo: mysql.TalentRepo{Store: store}, Cipher: cipher, Storage: files,
-			Translator: openAI, Reader: openAI, Usage: usageRepo},
-		Sync:       mysql.SyncRepo{Store: store},
-		Blacklist:  &app.BlacklistService{Repo: mysql.BlacklistRepo{Store: store}, Cipher: cipher},
-		Interviews: &app.InterviewService{Repo: mysql.InterviewRepo{Store: store}, Cipher: cipher, Storage: files, Timezone: tz},
-		Home:       &app.HomeService{Repo: mysql.HomeRepo{Store: store}, Timezone: tz},
-		Usage:      &app.UsageService{Repo: usageRepo},
+			Translator: openAI, Reader: openAI, Usage: usageRepo, Notifier: notifications},
+		Notifications: notifications,
+		Sync:          mysql.SyncRepo{Store: store},
+		Blacklist:     &app.BlacklistService{Repo: mysql.BlacklistRepo{Store: store}, Cipher: cipher},
+		Interviews:    &app.InterviewService{Repo: mysql.InterviewRepo{Store: store}, Cipher: cipher, Storage: files, Timezone: tz},
+		Home:          &app.HomeService{Repo: mysql.HomeRepo{Store: store}, Timezone: tz},
+		Usage:         &app.UsageService{Repo: usageRepo},
 		Identity: &app.IdentityService{Repo: mysql.IdentityRepo{Store: store}, Usage: usageRepo,
 			Lookup: identity.New(identity.Config{Provider: cfg.DNIProvider, Token: cfg.DNIToken, BaseURL: cfg.DNIURL})},
 		Audit:        mysql.AuditRepo{Store: store},

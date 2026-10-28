@@ -39,6 +39,9 @@ type Config struct {
 	// Traducción del CV (mismo proveedor que el sistema heredado)
 	OpenAIKey, OpenAIModel string
 
+	// Push del sistema operativo (Web Push): claves VAPID generadas con go run ./cmd/vapid; sin claves queda apagado
+	VAPIDPublic, VAPIDPrivate, VAPIDSubject string
+
 	RateGeneralPerMin int
 	RateAuthPerMin    int
 }
@@ -68,6 +71,9 @@ func Load() (Config, error) {
 		DNIToken:          os.Getenv("DNI_API_TOKEN"),
 		DNIURL:            os.Getenv("DNI_API_URL"),
 		OpenAIKey:         os.Getenv("OPENAI_API_KEY"),
+		VAPIDPublic:       os.Getenv("VAPID_PUBLIC_KEY"),
+		VAPIDPrivate:      os.Getenv("VAPID_PRIVATE_KEY"),
+		VAPIDSubject:      os.Getenv("VAPID_SUBJECT"),
 		OpenAIModel:       get("OPENAI_MODEL", "gpt-4.1-mini"),
 		RateGeneralPerMin: intVal("RATE_LIMIT_PER_MIN", 600),
 		RateAuthPerMin:    intVal("RATE_LIMIT_AUTH_PER_MIN", 10),

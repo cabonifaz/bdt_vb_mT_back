@@ -3,6 +3,7 @@ module github.com/cabonifaz/bdt_vb_mT_back
 go 1.27.0
 
 require (
+	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/go-sql-driver/mysql v1.10.1
 	github.com/golang-jwt/jwt/v5 v5.3.1

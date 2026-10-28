@@ -21,23 +21,24 @@ type Config struct {
 }
 
 type Deps struct {
-	Auth         *app.AuthService
-	Tenants      *app.TenantService
-	Users        *app.UserService
-	ApiKeys      *app.ApiKeyService
-	Masters      *app.MasterService
-	Files        *app.FileService
-	Talents      *app.TalentService
-	Blacklist    *app.BlacklistService
-	Interviews   *app.InterviewService
-	Home         *app.HomeService
-	Identity     *app.IdentityService
-	Usage        *app.UsageService
-	Sync         ports.SyncRepository
-	Audit        ports.AuditRepository
-	Translations ports.TranslationRepository
-	Tokens       ports.TokenIssuer
-	Health       func() error
+	Auth          *app.AuthService
+	Tenants       *app.TenantService
+	Users         *app.UserService
+	ApiKeys       *app.ApiKeyService
+	Masters       *app.MasterService
+	Files         *app.FileService
+	Talents       *app.TalentService
+	Blacklist     *app.BlacklistService
+	Interviews    *app.InterviewService
+	Home          *app.HomeService
+	Identity      *app.IdentityService
+	Usage         *app.UsageService
+	Notifications *app.NotificationService
+	Sync          ports.SyncRepository
+	Audit         ports.AuditRepository
+	Translations  ports.TranslationRepository
+	Tokens        ports.TokenIssuer
+	Health        func() error
 }
 
 type Server struct {
@@ -105,6 +106,7 @@ func (s *Server) Handler() http.Handler {
 				r.With(s.requirePerm("tenant.audit.read")).Get("/audit", s.listAudit)
 				r.With(s.requirePerm("talent.read")).Get("/home", s.homeSummary)
 				r.With(s.requirePerm("talent.write")).Get("/identity/dni/{dni}", s.lookupDNI)
+				r.Group(s.notificationRoutes)
 				r.Group(s.talentRoutes)
 				r.Group(s.blacklistRoutes)
 				r.Group(s.interviewRoutes)

@@ -25,7 +25,9 @@ type TalentService struct {
 	Translator Translator
 	// Reader lee un CV para autocompletar el alta (OpenAI)
 	Reader CVReader
-	Usage  ports.UsageRepository
+	// Notifier avisa del alta o actualización del talento (centro de notificaciones y push)
+	Notifier TalentNotifier
+	Usage    ports.UsageRepository
 }
 
 func tenantOf(p *domain.Principal) (uint64, error) {
@@ -216,7 +218,17 @@ func (s *TalentService) Save(ctx context.Context, p *domain.Principal, ip string
 		}
 		w.SetRates = true
 	}
-	return s.Repo.Upsert(ctx, meta(p, ip), tid, w)
+	res, err := s.Repo.Upsert(ctx, meta(p, ip), tid, w)
+	if err == nil && s.Notifier != nil {
+		name := strings.Join(strings.Fields(in.FirstName+" "+in.LastName+" "+deref(in.SecondLastName)), " ")
+		s.Notifier.TalentSaved(ctx, p, res.ID, res.Created, name, strings.TrimSpace(deref(in.Headline)))
+	}
+	return res, err
+}
+
+// TalentNotifier avisa a los usuarios del tenant cuando se crea o actualiza un talento.
+type TalentNotifier interface {
+	TalentSaved(ctx context.Context, p *domain.Principal, talentID string, created bool, name, headline string)
 }
 
 func (s *TalentService) SetStatus(ctx context.Context, p *domain.Principal, ip, id, status string) error {

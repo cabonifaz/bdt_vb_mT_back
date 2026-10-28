@@ -129,7 +129,7 @@ func sanitizeCVRead(in CVRead, now time.Time) *CVRead {
 	if e := strings.TrimSpace(in.Email); strings.Contains(e, "@") && len(e) <= 254 && !strings.ContainsAny(e, " \t\n") {
 		out.Email = e
 	}
-	out.Linkedin, out.Github = url(in.Linkedin), url(in.Github)
+	out.Linkedin, out.Github = cleanURL(in.Linkedin), cleanURL(in.Github)
 	seen := map[string]bool{}
 	for _, sk := range in.TechSkills {
 		name := clip(sk.Name, 100)
@@ -207,7 +207,7 @@ func code2(s string) string {
 	return ""
 }
 
-func url(s string) string {
+func cleanURL(s string) string {
 	s = strings.TrimSpace(s)
 	if s == "" || len(s) > 300 || strings.ContainsAny(s, " \t\n") {
 		return ""
