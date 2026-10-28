@@ -624,7 +624,7 @@ func (e *env) genRQs(ctx context.Context, spec TenantSpec, n int, d rqDeps) {
 			e.fails("estado RQ", err)
 		}
 	})
-	fmt.Printf("%-18s %d RQ generados\n", spec.Slug, spec.RQs)
+	fmt.Printf("%-18s %d RQ generados\n", spec.Slug, n)
 
 	// entrevistas: agendadas (hoy y próximos días) y realizadas (últimas dos semanas)
 	if len(ivTasks) > 60 {
