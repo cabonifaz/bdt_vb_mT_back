@@ -220,7 +220,7 @@ func (s *NotificationService) notify(ctx context.Context, p *domain.Principal, t
 
 var rqStatusLabel = map[string][2]string{
 	"REGISTERED": {"Registrado", "Registered"}, "ASSIGNED": {"Asignado", "Assigned"}, "IN_SELECTION": {"En selección", "In selection"},
-	"IN_PRODUCTION": {"En producción", "In production"}, "ATTENDED": {"Atendido", "Fulfilled"}, "FINISHED": {"Terminado", "Finished"},
+	"IN_PRODUCTION": {"A procesar", "To process"}, "ATTENDED": {"Atendido", "Fulfilled"}, "FINISHED": {"Terminado", "Finished"},
 	"LOST": {"Perdido", "Lost"}, "CANCELLED": {"Cancelado", "Cancelled"},
 }
 

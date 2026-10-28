@@ -97,12 +97,13 @@ func (e *env) seedTenant(ctx context.Context, spec TenantSpec, keepAdmin string)
 		}
 		return out
 	}
+	leads := invite("SELECTION_LEAD", "jefe", 1)
 	analysts := invite("RECRUITER", "analista", spec.Analysts)
 	commercial := invite("COMMERCIAL", "comercial", spec.Commercial)
 	if len(analysts) == 0 {
 		return creds, fmt.Errorf("no se crearon analistas")
 	}
-	writers := append([]user{admin}, commercial...) // con rq.write y tarifas
+	writers := append(append([]user{admin}, leads...), commercial...) // con rq.write y tarifas
 
 	// catálogos del tenant: skills, perfiles y clientes del rubro
 	m, err := e.loadMasters(ctx, tid)
@@ -687,7 +688,7 @@ func (e *env) topUpRQs(ctx context.Context, spec TenantSpec) error {
 		}
 		if role == "RECRUITER" {
 			d.analysts = append(d.analysts, user{p, p.FullName})
-		} else if role == "TENANT_ADMIN" || role == "COMMERCIAL" {
+		} else if role == "TENANT_ADMIN" || role == "SELECTION_LEAD" || role == "COMMERCIAL" {
 			d.writers = append(d.writers, user{p, p.FullName})
 		}
 	}
@@ -740,4 +741,40 @@ func (e *env) topUpRQs(ctx context.Context, spec TenantSpec) error {
 	trows.Close()
 	e.genRQs(ctx, spec, n, d)
 	return nil
+}
+
+// addLead crea el jefe de selección (jefe1@<slug>.demo) en un tenant ya generado, si aún no existe.
+// Devuelve la línea de credenciales (vacía si ya existía).
+func (e *env) addLead(ctx context.Context, spec TenantSpec) (string, error) {
+	var tid, adminID uint64
+	if err := e.db.QueryRowContext(ctx, `SELECT t.id, u.id FROM tenant t JOIN app_user u ON u.tenant_id = t.id
+		JOIN user_role ur ON ur.user_id = u.id JOIN role r ON r.id = ur.role_id
+		WHERE t.slug = ? AND t.deleted_at IS NULL AND r.code = 'TENANT_ADMIN' AND u.status = 'ACTIVE' AND u.deleted_at IS NULL
+		ORDER BY u.id LIMIT 1`, spec.Slug).Scan(&tid, &adminID); err != nil {
+		return "", fmt.Errorf("tenant %s: %w", spec.Slug, err)
+	}
+	email := "jefe1@" + spec.Slug + ".demo"
+	var n int
+	if err := e.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM app_user WHERE email_bidx = ? AND tenant_id = ? AND deleted_at IS NULL",
+		e.cipher.BlindIndex(email), tid).Scan(&n); err != nil {
+		return "", err
+	}
+	if n > 0 {
+		fmt.Printf("%-18s %s ya existe\n", spec.Slug, email)
+		return "", nil
+	}
+	admin, err := e.auth.Principal(ctx, adminID)
+	if err != nil {
+		return "", err
+	}
+	inv, err := e.users.Invite(ctx, admin, ip, &tid, email, "SELECTION_LEAD", spec.Name, "es")
+	if err != nil {
+		return "", fmt.Errorf("invitar %s: %w", email, err)
+	}
+	name, pwd := e.personName(), password()
+	if _, err := e.accept(ctx, inv, name, pwd); err != nil {
+		return "", fmt.Errorf("aceptar %s: %w", email, err)
+	}
+	fmt.Printf("%-18s %s creado\n", spec.Slug, email)
+	return fmt.Sprintf("%s_JEFE1=%s %s   # %s (jefe de selección)", strings.ToUpper(codeOf(spec.Slug)), email, pwd, name), nil
 }

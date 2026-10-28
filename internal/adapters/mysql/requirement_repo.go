@@ -69,16 +69,26 @@ func (r RequirementRepo) rawDocs(ctx context.Context, proc string, args ...any) 
 	return out, nil
 }
 
-func (r RequirementRepo) Board(ctx context.Context, m ports.Meta, tenantID uint64, search string, clientID *string, mine bool, closedDays int) ([]ports.RQDoc, error) {
-	rs, err := r.call(ctx, "sp_rq_board", m.ActorID, tenantID, nullStr(search), clientID, mine, closedDays)
+func (r RequirementRepo) Board(ctx context.Context, m ports.Meta, tenantID uint64, f ports.BoardQuery) ([]ports.RQDoc, ports.BoardCounts, error) {
+	var n ports.BoardCounts
+	rs, err := r.call(ctx, "sp_rq_board", m.ActorID, tenantID, nullStr(f.Search), f.ClientID, f.ContactID, f.ProfileID, f.Mine, f.Scope, f.Today)
 	if err != nil {
-		return nil, err
+		return nil, n, err
 	}
 	defer rs.Close()
 	if !rs.Next() {
-		return []ports.RQDoc{}, nil
+		return []ports.RQDoc{}, n, nil
 	}
-	return r.docs(rs, true)
+	docs, err := r.docs(rs, true)
+	if err != nil {
+		return nil, n, err
+	}
+	if rs.Next() {
+		if err := rs.One(&n.Active, &n.Soon, &n.Overdue, &n.New, &n.Closed, &n.All); err != nil {
+			return nil, n, err
+		}
+	}
+	return docs, n, nil
 }
 
 func (r RequirementRepo) Get(ctx context.Context, m ports.Meta, tenantID uint64, id string) (*ports.RQDoc, error) {
@@ -128,6 +138,14 @@ func (r RequirementRepo) Save(ctx context.Context, m ports.Meta, tenantID uint64
 
 func (r RequirementRepo) SetStatus(ctx context.Context, m ports.Meta, tenantID uint64, id, statusID string, order *int) (*ports.RQChange, error) {
 	rs, err := r.call(ctx, "sp_rq_set_status", m.ActorID, tenantID, id, statusID, optI(order), nullStr(m.IP))
+	if err != nil {
+		return nil, err
+	}
+	return r.change(rs, false)
+}
+
+func (r RequirementRepo) Reopen(ctx context.Context, m ports.Meta, tenantID uint64, id, reason, notes string, statusID *string) (*ports.RQChange, error) {
+	rs, err := r.call(ctx, "sp_rq_reopen", m.ActorID, tenantID, id, reason, nullStr(notes), statusID, nullStr(m.IP))
 	if err != nil {
 		return nil, err
 	}

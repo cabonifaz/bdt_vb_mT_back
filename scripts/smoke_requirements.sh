@@ -69,7 +69,7 @@ check "reclutador: sin tarifa" "$(echo "$RR" | js "o.vacancies.find(v=>v.id==='$
 check "reclutador: sin banda salarial" "$(echo "$RR" | js 'o.billing==null && o.canSeeRates===false')" true
 
 echo "== Tablero"
-check "aparece en el tablero" "$(req POST /api/v1/tenant/requirements/board "$V" "{\"search\":\"$CODE\"}" >/dev/null; body | js 'o.length')" 1
+check "aparece en el tablero" "$(req POST /api/v1/tenant/requirements/board "$V" "{\"scope\":\"ALL\",\"search\":\"$CODE\"}" >/dev/null; body | js 'o.cards.length')" 1
 check "con vacantes y cubiertas" "$(body | js "o[0].vacancies+'/'+o[0].covered")" "3/0"
 check "mover a Asignado" "$(req PATCH /api/v1/tenant/requirements/$RQ/status "$A" "{\"statusId\":\"$ASG\",\"order\":1}")" 200
 check "estado anterior" "$(body | js 'o.previousStatus')" REGISTERED
@@ -90,7 +90,7 @@ check "confirmar" "$(req PATCH /api/v1/tenant/requirements/candidates/$C1 "$R" "
 req PATCH /api/v1/tenant/requirements/candidates/$C2 "$R" "{\"stageId\":\"$DATA\"}" >/dev/null
 check "vacante llena (cantidad 1)" "$(req PATCH /api/v1/tenant/requirements/candidates/$C2 "$R" "{\"stageId\":\"$CONF\"}")" 409
 check "pero puede pasar a otra vacante con cupo" "$(req PATCH /api/v1/tenant/requirements/candidates/$C2 "$R" "{\"stageId\":\"$CONF\",\"vacancyId\":\"$V2\"}")" 200
-check "cubiertas en el tablero" "$(req POST /api/v1/tenant/requirements/board "$A" "{\"search\":\"$CODE\"}" >/dev/null; body | js 'o[0].covered')" 2
+check "cubiertas en el tablero" "$(req POST /api/v1/tenant/requirements/board "$A" "{\"scope\":\"ALL\",\"search\":\"$CODE\"}" >/dev/null; body | js 'o.cards[0].covered')" 2
 check "no se quita una vacante con candidatos" "$(req PUT /api/v1/tenant/requirements/$RQ "$A" "$(edit 'o.vacancies=[o.vacancies[0]]')")" 409
 check "postulaciones del talento" "$(code -H "$R" $API/api/v1/tenant/talents/$T1/applications >/dev/null; body | js "o[0].code+'|'+o[0].stage.code")" "$CODE|CONFIRMED"
 check "no se borra un RQ con confirmados" "$(req DELETE /api/v1/tenant/requirements/$RQ "$A" '')" 409

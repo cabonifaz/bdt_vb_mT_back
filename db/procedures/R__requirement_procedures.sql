@@ -22,15 +22,46 @@ BEGIN
   SET o_ok = EXISTS (SELECT 1 FROM v_user_permission WHERE user_id = p_actor_id AND code = 'rq.rates.read');
 END $$
 
--- Tablero: RQ abiertos + cerrados actualizados en los últimos p_closed_days días.
--- Filtros opcionales: texto (código, título, cliente), cliente, responsable, solo los míos.
+-- Tablero por vista (p_scope):
+--   ACTIVE  = abiertos sin vencer (por defecto)      SOON   = abiertos que vencen entre hoy y los próximos 3 días
+--   OVERDUE = abiertos vencidos                      NEW    = abiertos registrados en los últimos 7 días
+--   CLOSED  = cerrados (cualquier motivo)            ALL    = todo
+-- p_today es la fecha local del usuario (define "vencido"). Filtros opcionales: texto (código, título, cliente,
+-- contacto o perfil), cliente, contacto del cliente, perfil y solo los míos.
+-- Segundo result set: cantidad por vista con los mismos filtros (contadores de las pestañas del tablero).
 DROP PROCEDURE IF EXISTS sp_rq_board $$
 CREATE PROCEDURE sp_rq_board(IN p_actor_id BIGINT UNSIGNED, IN p_tenant_id BIGINT UNSIGNED, IN p_search VARCHAR(100),
-  IN p_client_uuid CHAR(36), IN p_mine TINYINT(1), IN p_closed_days INT)
+  IN p_client_uuid CHAR(36), IN p_contact_uuid CHAR(36), IN p_profile_uuid CHAR(36), IN p_mine TINYINT(1),
+  IN p_scope VARCHAR(10), IN p_today DATE)
 BEGIN
   DECLARE v_search VARCHAR(110);
   CALL sp_assert_actor(p_actor_id, p_tenant_id, 'rq.read');
   SET v_search = IF(p_search IS NULL OR TRIM(p_search) = '', NULL, CONCAT('%', LOWER(TRIM(p_search)), '%'));
+
+  -- RQ que cumplen los filtros (sin la vista); de aquí salen las tarjetas y los contadores
+  DROP TEMPORARY TABLE IF EXISTS tmp_rq_board;
+  CREATE TEMPORARY TABLE tmp_rq_board (id BIGINT UNSIGNED PRIMARY KEY, is_open TINYINT(1), due DATE, created DATE) ENGINE=MEMORY;
+  INSERT INTO tmp_rq_board
+  SELECT r.id, s.str1 = 'OPEN', r.due_date, DATE(r.created_at)
+    FROM requirement r
+    JOIN master_item s ON s.id = r.status_item_id
+    JOIN master_item c ON c.id = r.client_item_id
+   WHERE r.tenant_id = p_tenant_id AND r.deleted_at IS NULL
+     AND (p_client_uuid IS NULL OR c.uuid = p_client_uuid)
+     AND (p_contact_uuid IS NULL OR EXISTS (SELECT 1 FROM requirement_contact rc JOIN client_contact cc ON cc.id = rc.contact_id
+                                             WHERE rc.requirement_id = r.id AND cc.uuid = p_contact_uuid))
+     AND (p_profile_uuid IS NULL OR EXISTS (SELECT 1 FROM requirement_vacancy v JOIN master_item p ON p.id = v.profile_item_id
+                                             WHERE v.requirement_id = r.id AND v.deleted_at IS NULL AND p.uuid = p_profile_uuid))
+     AND (IFNULL(p_mine, 0) = 0 OR r.owner_user_id = p_actor_id OR r.created_by = p_actor_id)
+     AND (v_search IS NULL OR LOWER(r.code) LIKE v_search OR LOWER(r.title) LIKE v_search
+          OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(c.label_i18n, '$.es'))) LIKE v_search
+          OR EXISTS (SELECT 1 FROM requirement_contact rc JOIN client_contact cc ON cc.id = rc.contact_id
+                      WHERE rc.requirement_id = r.id
+                        AND LOWER(CONCAT_WS(' ', cc.first_name, cc.last_name, cc.second_last_name)) LIKE v_search)
+          OR EXISTS (SELECT 1 FROM requirement_vacancy v JOIN master_item p ON p.id = v.profile_item_id
+                      WHERE v.requirement_id = r.id AND v.deleted_at IS NULL
+                        AND LOWER(JSON_UNQUOTE(JSON_EXTRACT(p.label_i18n, '$.es'))) LIKE v_search));
+
   SELECT JSON_OBJECT(
            'id', r.uuid, 'code', r.code, 'title', r.title, 'version', r.version, 'boardOrder', r.board_order,
            'requestDate', r.request_date, 'dueDate', r.due_date, 'updatedAt', IFNULL(r.updated_at, r.created_at),
@@ -49,19 +80,31 @@ BEGIN
                          WHERE v.requirement_id = r.id AND v.deleted_at IS NULL)
          ) AS doc,
          o.full_name_enc AS owner_name_enc
-    FROM requirement r
+    FROM tmp_rq_board f
+    JOIN requirement r ON r.id = f.id
     JOIN master_item s ON s.id = r.status_item_id
     JOIN master_item c ON c.id = r.client_item_id
     LEFT JOIN master_item wm ON wm.id = r.work_modality_item_id
     LEFT JOIN app_user o ON o.id = r.owner_user_id
-   WHERE r.tenant_id = p_tenant_id AND r.deleted_at IS NULL
-     AND (s.str1 = 'OPEN' OR IFNULL(r.updated_at, r.created_at) >= NOW(3) - INTERVAL IFNULL(p_closed_days, 60) DAY)
-     AND (v_search IS NULL OR LOWER(r.code) LIKE v_search OR LOWER(r.title) LIKE v_search
-          OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(c.label_i18n, '$.es'))) LIKE v_search)
-     AND (p_client_uuid IS NULL OR c.uuid = p_client_uuid)
-     AND (IFNULL(p_mine, 0) = 0 OR r.owner_user_id = p_actor_id OR r.created_by = p_actor_id)
-   ORDER BY s.sort_order, r.board_order, r.due_date, r.id
+   WHERE CASE p_scope
+           WHEN 'ALL'     THEN 1
+           WHEN 'CLOSED'  THEN f.is_open = 0
+           WHEN 'OVERDUE' THEN f.is_open = 1 AND f.due < p_today
+           WHEN 'SOON'    THEN f.is_open = 1 AND f.due BETWEEN p_today AND p_today + INTERVAL 3 DAY
+           WHEN 'NEW'     THEN f.is_open = 1 AND f.created >= p_today - INTERVAL 7 DAY
+           ELSE f.is_open = 1 AND f.due >= p_today
+         END
+   ORDER BY s.sort_order, IF(f.is_open = 0, IFNULL(r.updated_at, r.created_at), NULL) DESC, r.board_order, r.due_date, r.id
    LIMIT 1000;
+
+  SELECT IFNULL(SUM(is_open = 1 AND due >= p_today), 0) AS active,
+         IFNULL(SUM(is_open = 1 AND due BETWEEN p_today AND p_today + INTERVAL 3 DAY), 0) AS soon,
+         IFNULL(SUM(is_open = 1 AND due < p_today), 0) AS overdue,
+         IFNULL(SUM(is_open = 1 AND created >= p_today - INTERVAL 7 DAY), 0) AS recent,
+         IFNULL(SUM(is_open = 0), 0) AS closed,
+         COUNT(*) AS total
+    FROM tmp_rq_board;
+  DROP TEMPORARY TABLE tmp_rq_board;
 END $$
 
 -- Ficha completa del RQ (con vacantes, contactos, bandas y candidatos)
@@ -116,7 +159,11 @@ BEGIN
                         JOIN master_item cs ON cs.id = rc.stage_item_id
                         JOIN talent t ON t.id = rc.talent_id
                         LEFT JOIN file_object ph ON ph.id = t.photo_file_id AND ph.deleted_at IS NULL
-                       WHERE rc.requirement_id = r.id AND rc.deleted_at IS NULL), JSON_ARRAY())
+                       WHERE rc.requirement_id = r.id AND rc.deleted_at IS NULL), JSON_ARRAY()),
+           'reopens', IFNULL((SELECT JSON_ARRAYAGG(JSON_OBJECT('reason', ro.reason, 'notes', ro.notes, 'createdAt', ro.created_at,
+                          'from', fs.label_i18n, 'to', ts.label_i18n))
+                        FROM requirement_reopen ro JOIN master_item fs ON fs.id = ro.from_status_id JOIN master_item ts ON ts.id = ro.to_status_id
+                       WHERE ro.requirement_id = r.id), JSON_ARRAY())
          ) AS doc,
          o.full_name_enc AS owner_name_enc
     FROM requirement r
@@ -175,6 +222,12 @@ BEGIN
    WHERE r.uuid = p_uuid AND r.tenant_id = p_tenant_id AND r.deleted_at IS NULL FOR UPDATE;
   IF v_id IS NOT NULL AND p_expected_version IS NOT NULL AND p_expected_version <> v_version THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:VERSION_CONFLICT';
+  END IF;
+  -- un RQ cerrado solo vuelve a abrirse con sp_rq_reopen (jefe de selección, con motivo)
+  IF v_id IS NOT NULL AND v_old_status <> v_new_status
+     AND (SELECT str1 FROM master_item WHERE id = v_status) = 'OPEN'
+     AND (SELECT s.str1 FROM requirement r JOIN master_item s ON s.id = r.status_item_id WHERE r.id = v_id) = 'CLOSED' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:RQ_REOPEN_REQUIRED';
   END IF;
 
   SET v_code = NULLIF(TRIM(p_code), '');
@@ -315,6 +368,10 @@ BEGIN
   CALL sp_rq_resolve(p_tenant_id, p_uuid, v_id, v_closed);
   CALL sp_master_resolve(p_tenant_id, 'RQ_STATUS', p_status_uuid, v_status);
   IF v_status IS NULL THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:VALIDATION'; END IF;
+  -- de cerrado a abierto solo con sp_rq_reopen; entre motivos de cierre sí se puede mover
+  IF v_closed = 1 AND (SELECT str1 FROM master_item WHERE id = v_status) = 'OPEN' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:RQ_REOPEN_REQUIRED';
+  END IF;
   SELECT s.code INTO v_old FROM requirement r JOIN master_item s ON s.id = r.status_item_id WHERE r.id = v_id;
   SELECT code INTO v_new FROM master_item WHERE id = v_status;
   UPDATE requirement SET status_item_id = v_status, board_order = IFNULL(p_board_order, board_order),
@@ -323,6 +380,46 @@ BEGIN
   IF v_old <> v_new THEN
     CALL sp_audit_insert(p_tenant_id, p_actor_id, NULL, 'STATUS', 'requirement', p_uuid, JSON_OBJECT('from', v_old, 'to', v_new), p_ip);
   END IF;
+  SELECT r.uuid, r.version, r.code, v_old AS previous_status, v_new AS status, r.title,
+         JSON_UNQUOTE(JSON_EXTRACT(c.label_i18n, '$.es')) AS client
+    FROM requirement r JOIN master_item c ON c.id = r.client_item_id WHERE r.id = v_id;
+END $$
+
+-- Reabrir un RQ cerrado (renunció un talento o se amplían las vacantes) para postular más personas y hacer
+-- un nuevo ingreso. Solo con rq.reopen (jefe de selección). Vuelve a p_status_uuid (abierto) o a En selección.
+DROP PROCEDURE IF EXISTS sp_rq_reopen $$
+CREATE PROCEDURE sp_rq_reopen(IN p_actor_id BIGINT UNSIGNED, IN p_tenant_id BIGINT UNSIGNED, IN p_uuid CHAR(36),
+  IN p_reason VARCHAR(20), IN p_notes VARCHAR(500), IN p_status_uuid CHAR(36), IN p_ip VARCHAR(45))
+BEGIN
+  DECLARE v_id, v_status, v_from BIGINT UNSIGNED;
+  DECLARE v_closed TINYINT(1);
+  DECLARE v_old VARCHAR(60);
+  DECLARE v_new VARCHAR(60);
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN ROLLBACK; RESIGNAL; END;
+  CALL sp_assert_actor(p_actor_id, p_tenant_id, 'rq.reopen');
+  CALL sp_rq_resolve(p_tenant_id, p_uuid, v_id, v_closed);
+  IF v_closed = 0 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:RQ_NOT_CLOSED'; END IF;
+  IF p_reason IS NULL OR p_reason NOT IN ('RESIGNATION', 'MORE_VACANCIES') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:VALIDATION';
+  END IF;
+  IF p_status_uuid IS NULL THEN
+    SELECT i.id INTO v_status FROM master_item i JOIN master_table t ON t.id = i.master_table_id
+     WHERE t.code = 'RQ_STATUS' AND i.code = 'IN_SELECTION' AND i.tenant_id IS NULL AND i.deleted_at IS NULL;
+  ELSE
+    CALL sp_master_resolve(p_tenant_id, 'RQ_STATUS', p_status_uuid, v_status);
+  END IF;
+  IF v_status IS NULL OR (SELECT str1 FROM master_item WHERE id = v_status) <> 'OPEN' THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:VALIDATION';
+  END IF;
+  SELECT r.status_item_id, s.code INTO v_from, v_old FROM requirement r JOIN master_item s ON s.id = r.status_item_id WHERE r.id = v_id;
+  SELECT code INTO v_new FROM master_item WHERE id = v_status;
+  START TRANSACTION;
+  UPDATE requirement SET status_item_id = v_status, version = version + 1, updated_by = p_actor_id WHERE id = v_id;
+  INSERT INTO requirement_reopen (requirement_id, reason, notes, from_status_id, to_status_id, created_by)
+  VALUES (v_id, p_reason, NULLIF(TRIM(p_notes), ''), v_from, v_status, p_actor_id);
+  COMMIT;
+  CALL sp_audit_insert(p_tenant_id, p_actor_id, NULL, 'REOPEN', 'requirement', p_uuid,
+    JSON_OBJECT('from', v_old, 'to', v_new, 'reason', p_reason), p_ip);
   SELECT r.uuid, r.version, r.code, v_old AS previous_status, v_new AS status, r.title,
          JSON_UNQUOTE(JSON_EXTRACT(c.label_i18n, '$.es')) AS client
     FROM requirement r JOIN master_item c ON c.id = r.client_item_id WHERE r.id = v_id;

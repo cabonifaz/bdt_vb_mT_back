@@ -179,31 +179,65 @@ func (s *RequirementService) withOwner(d ports.RQDoc) json.RawMessage {
 	return out
 }
 
-// Board: tarjetas del tablero (RQ abiertos + cerrados recientes) con filtros.
-func (s *RequirementService) Board(ctx context.Context, p *domain.Principal, search, clientID string, mine bool, closedDays int) ([]json.RawMessage, error) {
+// BoardFilter: lo que pide el tablero. Scope vacío = ACTIVE (abiertos sin vencer); Today = fecha local del usuario.
+type BoardFilter struct {
+	Scope, Search, ClientID, ContactID, ProfileID, Today string
+	Mine                                                 bool
+}
+
+// BoardResult: tarjetas de la vista pedida y cantidad de RQ por vista.
+type BoardResult struct {
+	Cards  []json.RawMessage `json:"cards"`
+	Counts ports.BoardCounts `json:"counts"`
+}
+
+var boardScopes = map[string]bool{"ACTIVE": true, "SOON": true, "OVERDUE": true, "NEW": true, "CLOSED": true, "ALL": true}
+
+// Board: tarjetas del tablero según la vista y los filtros.
+func (s *RequirementService) Board(ctx context.Context, p *domain.Principal, f BoardFilter) (*BoardResult, error) {
 	tid, err := tenantOf(p)
 	if err != nil {
 		return nil, err
 	}
-	if utf8.RuneCountInString(search) > 100 || (clientID != "" && !validUUID(clientID)) {
+	if f.Scope == "" {
+		f.Scope = "ACTIVE"
+	}
+	if !boardScopes[f.Scope] || utf8.RuneCountInString(f.Search) > 100 {
 		return nil, domain.ErrValidation
 	}
-	if closedDays <= 0 || closedDays > 365 {
-		closedDays = 60
+	q := ports.BoardQuery{Scope: f.Scope, Search: strings.TrimSpace(f.Search), Mine: f.Mine, Today: boardToday(f.Today, time.Now())}
+	for _, x := range []struct {
+		in  string
+		out **string
+	}{{f.ClientID, &q.ClientID}, {f.ContactID, &q.ContactID}, {f.ProfileID, &q.ProfileID}} {
+		if x.in == "" {
+			continue
+		}
+		if !validUUID(x.in) {
+			return nil, domain.ErrValidation
+		}
+		v := x.in
+		*x.out = &v
 	}
-	var client *string
-	if clientID != "" {
-		client = &clientID
-	}
-	docs, err := s.Repo.Board(ctx, meta(p, ""), tid, strings.TrimSpace(search), client, mine, closedDays)
+	docs, counts, err := s.Repo.Board(ctx, meta(p, ""), tid, q)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]json.RawMessage, 0, len(docs))
+	out := &BoardResult{Cards: make([]json.RawMessage, 0, len(docs)), Counts: counts}
 	for _, d := range docs {
-		out = append(out, s.withOwner(d))
+		out.Cards = append(out.Cards, s.withOwner(d))
 	}
 	return out, nil
+}
+
+// boardToday: la fecha local que envía el navegador (define qué está vencido); si falta o se aleja más de un día
+// de la fecha del servidor (zonas horarias de -12 a +14), se usa la del servidor en UTC.
+func boardToday(in string, now time.Time) string {
+	utc := now.UTC()
+	if d, err := time.Parse("2006-01-02", in); err == nil && d.After(utc.AddDate(0, 0, -2)) && d.Before(utc.AddDate(0, 0, 2)) {
+		return in
+	}
+	return utc.Format("2006-01-02")
 }
 
 func (s *RequirementService) Get(ctx context.Context, p *domain.Principal, id string) (json.RawMessage, error) {
@@ -259,6 +293,29 @@ func (s *RequirementService) SetStatus(ctx context.Context, p *domain.Principal,
 	}
 	c, err := s.Repo.SetStatus(ctx, meta(p, ip), tid, id, statusID, order)
 	if err == nil && c != nil && c.PreviousStatus != c.Status && s.Notifier != nil {
+		s.Notifier.RQChanged(ctx, p, c)
+	}
+	return c, err
+}
+
+// Reopen: reabre un RQ cerrado (RESIGNATION: renunció un talento; MORE_VACANCIES: se amplían las vacantes).
+// statusID opcional: estado abierto al que vuelve (por defecto En selección).
+func (s *RequirementService) Reopen(ctx context.Context, p *domain.Principal, ip, id, reason, notes, statusID string) (*ports.RQChange, error) {
+	tid, err := tenantOf(p)
+	if err != nil {
+		return nil, err
+	}
+	notes = strings.TrimSpace(notes)
+	if !validUUID(id) || (reason != "RESIGNATION" && reason != "MORE_VACANCIES") || utf8.RuneCountInString(notes) > 500 ||
+		(statusID != "" && !validUUID(statusID)) {
+		return nil, domain.ErrValidation
+	}
+	var st *string
+	if statusID != "" {
+		st = &statusID
+	}
+	c, err := s.Repo.Reopen(ctx, meta(p, ip), tid, id, reason, notes, st)
+	if err == nil && c != nil && s.Notifier != nil {
 		s.Notifier.RQChanged(ctx, p, c)
 	}
 	return c, err

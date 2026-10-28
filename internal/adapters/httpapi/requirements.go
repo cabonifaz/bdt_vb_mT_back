@@ -22,6 +22,7 @@ func (s *Server) requirementRoutes(r chi.Router) {
 	r.With(write).Put("/requirements/{id}", s.rqSave)
 	r.With(write).Patch("/requirements/{id}/status", s.rqStatus)
 	r.With(write).Delete("/requirements/{id}", s.rqDelete)
+	r.With(s.requirePerm("rq.reopen")).Post("/requirements/{id}/reopen", s.rqReopen)
 	r.With(cand).Post("/requirements/{id}/candidates", s.rqAddCandidate)
 	r.With(cand).Patch("/requirements/candidates/{cid}", s.rqMoveCandidate)
 	r.With(cand).Delete("/requirements/candidates/{cid}", s.rqRemoveCandidate)
@@ -33,16 +34,20 @@ func (s *Server) requirementRoutes(r chi.Router) {
 
 func (s *Server) rqBoard(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Search     string `json:"search"`
-		ClientID   string `json:"clientId"`
-		Mine       bool   `json:"mine"`
-		ClosedDays int    `json:"closedDays"`
+		Scope     string `json:"scope"`
+		Search    string `json:"search"`
+		ClientID  string `json:"clientId"`
+		ContactID string `json:"contactId"`
+		ProfileID string `json:"profileId"`
+		Mine      bool   `json:"mine"`
+		Today     string `json:"today"`
 	}
 	if err := decode(w, r, &in); err != nil {
 		s.writeErr(w, r, err)
 		return
 	}
-	out, err := s.Requirements.Board(r.Context(), principal(r), in.Search, in.ClientID, in.Mine, in.ClosedDays)
+	out, err := s.Requirements.Board(r.Context(), principal(r), app.BoardFilter{Scope: in.Scope, Search: in.Search,
+		ClientID: in.ClientID, ContactID: in.ContactID, ProfileID: in.ProfileID, Mine: in.Mine, Today: in.Today})
 	if err != nil {
 		s.writeErr(w, r, err)
 		return
@@ -89,6 +94,24 @@ func (s *Server) rqStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c, err := s.Requirements.SetStatus(r.Context(), principal(r), s.clientIP(r), chi.URLParam(r, "id"), in.StatusID, in.Order)
+	if err != nil {
+		s.writeErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, c)
+}
+
+func (s *Server) rqReopen(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Reason   string `json:"reason"`
+		Notes    string `json:"notes"`
+		StatusID string `json:"statusId"`
+	}
+	if err := decode(w, r, &in); err != nil {
+		s.writeErr(w, r, err)
+		return
+	}
+	c, err := s.Requirements.Reopen(r.Context(), principal(r), s.clientIP(r), chi.URLParam(r, "id"), in.Reason, in.Notes, in.StatusID)
 	if err != nil {
 		s.writeErr(w, r, err)
 		return

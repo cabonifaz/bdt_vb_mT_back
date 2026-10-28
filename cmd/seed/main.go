@@ -57,6 +57,7 @@ func main() {
 	reset := flag.Bool("reset", false, "borrar los datos de staging (conserva Super Admin, tenant Fractal con su marca, el admin indicado y los catálogos globales)")
 	seed := flag.Bool("seed", false, "generar los datos de prueba")
 	topup := flag.Bool("topup", false, "completar los RQ que falten en los tenants ya generados")
+	leads := flag.Bool("leads", false, "agregar el jefe de selección a los tenants ya generados (sus claves se añaden a -creds)")
 	keepAdmin := flag.String("keep-admin", "", "correo del admin de Fractal que se conserva")
 	creds := flag.String("creds", "../_secrets/seed_users.env", "archivo (fuera del repo) donde se guardan las credenciales generadas")
 	workers := flag.Int("workers", 16, "llamadas concurrentes a la BD")
@@ -131,6 +132,34 @@ func main() {
 			}
 		}
 		fmt.Printf("completado (avisos: %d)\n", e.errCount.Load())
+	}
+	if *leads {
+		var lines []string
+		for _, spec := range tenants {
+			if *only != "" && spec.Slug != *only {
+				continue
+			}
+			line, err := e.addLead(ctx, spec)
+			if err != nil {
+				fail(err)
+			}
+			if line != "" {
+				lines = append(lines, line)
+			}
+		}
+		if len(lines) > 0 {
+			f, err := os.OpenFile(*creds, os.O_APPEND|os.O_WRONLY, 0o600)
+			if err != nil {
+				fail(err)
+			}
+			_, err = f.WriteString("\n# Jefes de selección\n" + strings.Join(lines, "\n") + "\n")
+			if cerr := f.Close(); err == nil {
+				err = cerr
+			}
+			if err != nil {
+				fail(err)
+			}
+		}
 	}
 	if *seed {
 		start := time.Now()

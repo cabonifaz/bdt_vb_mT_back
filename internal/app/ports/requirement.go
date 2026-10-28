@@ -33,15 +33,33 @@ type RQChange struct {
 	Client         string `json:"-"`
 }
 
+// BoardQuery: vista del tablero (ACTIVE, SOON, OVERDUE, NEW, CLOSED, ALL) y filtros; Today es la fecha local del usuario.
+type BoardQuery struct {
+	Scope, Search, Today           string
+	ClientID, ContactID, ProfileID *string
+	Mine                           bool
+}
+
+// BoardCounts: cantidad de RQ por vista con los mismos filtros.
+type BoardCounts struct {
+	Active  int `json:"active"`
+	Soon    int `json:"soon"`
+	Overdue int `json:"overdue"`
+	New     int `json:"new"`
+	Closed  int `json:"closed"`
+	All     int `json:"all"`
+}
+
 type ContactWrite struct {
 	ID, ClientID, FirstName, LastName, SecondLastName, Position, Phone, Phone2, Email, Email2 string
 }
 
 type RequirementRepository interface {
-	Board(ctx context.Context, m Meta, tenantID uint64, search string, clientID *string, mine bool, closedDays int) ([]RQDoc, error)
+	Board(ctx context.Context, m Meta, tenantID uint64, f BoardQuery) ([]RQDoc, BoardCounts, error)
 	Get(ctx context.Context, m Meta, tenantID uint64, id string) (*RQDoc, error)
 	Save(ctx context.Context, m Meta, tenantID uint64, w RQWrite) (*RQChange, error)
 	SetStatus(ctx context.Context, m Meta, tenantID uint64, id, statusID string, order *int) (*RQChange, error)
+	Reopen(ctx context.Context, m Meta, tenantID uint64, id, reason, notes string, statusID *string) (*RQChange, error)
 	Delete(ctx context.Context, m Meta, tenantID uint64, id string) error
 	CandidateAdd(ctx context.Context, m Meta, tenantID uint64, rqID, id, talentID, vacancyID string) (bool, error)
 	CandidateMove(ctx context.Context, m Meta, tenantID uint64, id, stageID string, vacancyID *string, order *int) (string, error)
