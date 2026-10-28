@@ -43,6 +43,7 @@ func (s *Server) talentRoutes(r chi.Router) {
 	r.With(read).Put("/talents/{id}/feedback", s.saveFeedback)
 	r.With(write).Post("/talents/{id}/files", s.uploadTalentFile)
 	r.With(read, s.requirePerm("talent.cv.generate")).Post("/talents/{id}/cv/translate", s.translateCV)
+	r.With(s.requirePerm("talent.write")).Post("/talents/cv/read", s.readCV)
 
 	r.With(read).Get("/collections", s.listCollections)
 	r.With(read).Post("/collections", s.createCollection)
@@ -471,4 +472,22 @@ func (s *Server) listColleagues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, list)
+}
+
+// POST /talents/cv/read {"text":"..."}: lee un CV (texto extraído del PDF en el navegador) para autocompletar el alta.
+func (s *Server) readCV(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Text string `json:"text"`
+	}
+	if err := decode(w, r, &in); err != nil {
+		s.writeErr(w, r, err)
+		return
+	}
+	out, err := s.Talents.ReadCV(r.Context(), principal(r), in.Text)
+	if err != nil {
+		s.writeErr(w, r, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, out)
 }

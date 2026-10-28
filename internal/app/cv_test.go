@@ -35,3 +35,27 @@ func TestValidCVStyle(t *testing.T) {
 		}
 	}
 }
+
+// Lo que devuelve el modelo se acota a lo que acepta el alta: fechas, catálogos, contactos y duplicados.
+func TestSanitizeCVRead(t *testing.T) {
+	out := sanitizeCVRead(CVRead{
+		FirstName: "  Ana ", Email: "no es correo", PhoneCode: "+51", PhoneNumber: "987 654 321", CountryCode: "pe", Linkedin: "linkedin.com/in/ana",
+		TechSkills:  []CVReadSkill{{Name: "Java", Years: 4.3}, {Name: "java", Years: 2}, {Name: "Go", Years: 99}},
+		Experiences: []CVReadExp{{Company: "ACME", StartDate: "2020-01", EndDate: "2021-05-01", Current: true}, {Company: " "}},
+		Educations:  []CVReadEdu{{Institution: "UNI", Grade: "phd"}},
+		Languages:   []CVReadLang{{Code: "en", Level: "advanced"}, {Code: "ENG", Level: "x"}},
+	})
+	if out.FirstName != "Ana" || out.Email != "" || out.PhoneCode != "51" || out.PhoneNumber != "987654321" || out.CountryCode != "PE" ||
+		out.Linkedin != "https://linkedin.com/in/ana" {
+		t.Fatalf("datos: %+v", out)
+	}
+	if len(out.TechSkills) != 2 || out.TechSkills[0].Years != 4.5 || out.TechSkills[1].Years != 0 {
+		t.Fatalf("skills: %+v", out.TechSkills)
+	}
+	if len(out.Experiences) != 1 || out.Experiences[0].StartDate != "" || out.Experiences[0].EndDate != "" {
+		t.Fatalf("experiencias: %+v", out.Experiences)
+	}
+	if out.Educations[0].Grade != "" || out.Languages[0].Code != "EN" || out.Languages[0].Level != "ADVANCED" || len(out.Languages) != 1 {
+		t.Fatalf("catálogos: %+v %+v", out.Educations, out.Languages)
+	}
+}

@@ -23,7 +23,9 @@ type TalentService struct {
 	Storage ports.FileStorage
 	// Translator traduce el CV (OpenAI); sin key responde AI_NOT_CONFIGURED
 	Translator Translator
-	Usage      ports.UsageRepository
+	// Reader lee un CV para autocompletar el alta (OpenAI)
+	Reader CVReader
+	Usage  ports.UsageRepository
 }
 
 func tenantOf(p *domain.Principal) (uint64, error) {

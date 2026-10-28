@@ -4,6 +4,7 @@ package domain
 const (
 	UsageDNILookup   = "DNI_LOOKUP"
 	UsageAITranslate = "AI_TRANSLATE"
+	UsageAICVRead    = "AI_CV_READ"
 )
 
 // AIUsage: tokens consumidos en una llamada al modelo de IA.

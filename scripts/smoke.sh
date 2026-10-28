@@ -44,6 +44,7 @@ check "tenant NO edita maestro global" "$(code -X PUT -H "Authorization: Bearer 
 check "SA ve consumo por tenant" "$(code -H "Authorization: Bearer $SA" "$API/api/v1/platform/usage?from=2026-01-01&to=2026-12-31")" 200
 check "consumo: rango inválido" "$(code -H "Authorization: Bearer $SA" "$API/api/v1/platform/usage?from=2026-12-31&to=2026-01-01")" 422
 check "admin NO ve consumo de plataforma" "$(code -H "Authorization: Bearer $AD" "$API/api/v1/platform/usage?from=2026-01-01&to=2026-12-31")" 403
+check "leer CV sin texto (escaneo)" "$(code -H "Authorization: Bearer $AD" -H "$J" -d '{"text":"escaneo"}' $API/api/v1/tenant/talents/cv/read)" 422
 check "tenant crea skill propia" "$(code -X PUT -H "Authorization: Bearer $AD" -H "$J" -d "{\"table\":\"TECH_SKILL\",\"code\":\"GO$RANDOM\",\"label\":{\"es\":\"Go\",\"en\":\"Go\"}}" $API/api/v1/tenant/masters/items)" 200
 
 echo "== API keys"
