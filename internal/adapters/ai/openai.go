@@ -32,13 +32,14 @@ func NewOpenAI(key, model string) *OpenAI {
 var langName = map[string]string{"es": "Spanish", "en": "English"}
 
 // TranslateJSON traduce los valores de texto de un JSON al idioma indicado y devuelve un JSON con la misma estructura.
-func (o *OpenAI) TranslateJSON(ctx context.Context, in []byte, lang string) ([]byte, error) {
+func (o *OpenAI) TranslateJSON(ctx context.Context, in []byte, lang string) ([]byte, domain.AIUsage, error) {
+	usage := domain.AIUsage{Model: o.Model}
 	if o.Key == "" {
-		return nil, errNotConfigured
+		return nil, usage, errNotConfigured
 	}
 	target, ok := langName[lang]
 	if !ok {
-		return nil, domain.ErrValidation
+		return nil, usage, domain.ErrValidation
 	}
 	body, _ := json.Marshal(map[string]any{
 		"model":           o.Model,
@@ -54,21 +55,21 @@ func (o *OpenAI) TranslateJSON(ctx context.Context, in []byte, lang string) ([]b
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.URL, bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return nil, usage, err
 	}
 	req.Header.Set("Authorization", "Bearer "+o.Key)
 	req.Header.Set("Content-Type", "application/json")
 	res, err := o.HTTP.Do(req)
 	if err != nil {
-		return nil, errUnavailable
+		return nil, usage, errUnavailable
 	}
 	defer res.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(res.Body, 4<<20))
 	if res.StatusCode == http.StatusUnauthorized {
-		return nil, errNotConfigured
+		return nil, usage, errNotConfigured
 	}
 	if res.StatusCode != http.StatusOK {
-		return nil, errUnavailable
+		return nil, usage, errUnavailable
 	}
 	var out struct {
 		Choices []struct {
@@ -76,9 +77,19 @@ func (o *OpenAI) TranslateJSON(ctx context.Context, in []byte, lang string) ([]b
 				Content string `json:"content"`
 			} `json:"message"`
 		} `json:"choices"`
+		Model string `json:"model"`
+		Usage struct {
+			Prompt     int64 `json:"prompt_tokens"`
+			Completion int64 `json:"completion_tokens"`
+		} `json:"usage"`
 	}
-	if err := json.Unmarshal(raw, &out); err != nil || len(out.Choices) == 0 || !json.Valid([]byte(out.Choices[0].Message.Content)) {
-		return nil, errUnavailable
+	err = json.Unmarshal(raw, &out)
+	if out.Model != "" {
+		usage.Model = out.Model
 	}
-	return []byte(out.Choices[0].Message.Content), nil
+	usage.PromptTokens, usage.CompletionTokens = out.Usage.Prompt, out.Usage.Completion
+	if err != nil || len(out.Choices) == 0 || !json.Valid([]byte(out.Choices[0].Message.Content)) {
+		return nil, usage, errUnavailable
+	}
+	return []byte(out.Choices[0].Message.Content), usage, nil
 }

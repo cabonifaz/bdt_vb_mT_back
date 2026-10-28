@@ -32,6 +32,7 @@ type Deps struct {
 	Interviews   *app.InterviewService
 	Home         *app.HomeService
 	Identity     *app.IdentityService
+	Usage        *app.UsageService
 	Sync         ports.SyncRepository
 	Audit        ports.AuditRepository
 	Translations ports.TranslationRepository
@@ -122,6 +123,7 @@ func (s *Server) Handler() http.Handler {
 				r.With(s.requirePerm("platform.apikeys.approve")).Patch("/api-keys/{id}/status", s.setApiKeyStatus)
 				r.With(s.requirePerm("platform.masters.manage")).Put("/masters/items", s.upsertMasterItem)
 				r.With(s.requirePerm("platform.audit.read")).Get("/audit", s.listAudit)
+				r.With(s.requirePerm("platform.usage.read")).Get("/usage", s.usageReport)
 			})
 		})
 	})

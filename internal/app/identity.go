@@ -14,6 +14,7 @@ var dniRe = regexp.MustCompile(`^\d{8}$`)
 type IdentityService struct {
 	Lookup ports.IdentityLookup
 	Repo   ports.IdentityAuditRepository
+	Usage  ports.UsageRepository
 }
 
 func (s *IdentityService) LookupDNI(ctx context.Context, p *domain.Principal, ip, dni string) (*domain.PersonIdentity, error) {
@@ -28,5 +29,10 @@ func (s *IdentityService) LookupDNI(ctx context.Context, p *domain.Principal, ip
 	if err := s.Repo.LogLookup(ctx, meta(p, ip), tid, s.Lookup.Provider(), "REQUESTED"); err != nil {
 		return nil, err
 	}
-	return s.Lookup.LookupDNI(ctx, dni)
+	out, err := s.Lookup.LookupDNI(ctx, dni)
+	// se cuenta cada consulta que llega al proveedor (un DNI no encontrado también consume); sin token no hay llamada
+	if code := domain.AsError(err).Code; err == nil || code != "IDENTITY_NOT_CONFIGURED" {
+		recordUsage(ctx, s.Usage, tid, domain.UsageDNILookup, s.Lookup.Provider(), err == nil || code == "IDENTITY_NOT_FOUND", domain.AIUsage{})
+	}
+	return out, err
 }

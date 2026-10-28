@@ -58,6 +58,7 @@ func Build(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, erro
 		InviteTTL: cfg.InviteTTL, ExposeLink: cfg.Env == "local" || cfg.Env == "staging"}
 	fileRepo := mysql.FileRepo{Store: store}
 
+	usageRepo := mysql.UsageRepo{Store: store}
 	srv := httpapi.NewServer(httpapi.Config{CORSOrigins: cfg.CORSOrigins, TrustProxy: cfg.TrustProxy,
 		CookieSecure: !cfg.IsLocal(), RateGeneral: cfg.RateGeneralPerMin, RateAuth: cfg.RateAuthPerMin}, log, httpapi.Deps{
 		Auth:    auth,
@@ -67,12 +68,13 @@ func Build(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, erro
 		Masters: &app.MasterService{Repo: mysql.MasterRepo{Store: store}},
 		Files:   &app.FileService{Repo: fileRepo, Storage: files, Tenants: tenantRepo},
 		Talents: &app.TalentService{Repo: mysql.TalentRepo{Store: store}, Cipher: cipher, Storage: files,
-			Translator: ai.NewOpenAI(cfg.OpenAIKey, cfg.OpenAIModel)},
+			Translator: ai.NewOpenAI(cfg.OpenAIKey, cfg.OpenAIModel), Usage: usageRepo},
 		Sync:       mysql.SyncRepo{Store: store},
 		Blacklist:  &app.BlacklistService{Repo: mysql.BlacklistRepo{Store: store}, Cipher: cipher},
 		Interviews: &app.InterviewService{Repo: mysql.InterviewRepo{Store: store}, Cipher: cipher, Storage: files, Timezone: tz},
 		Home:       &app.HomeService{Repo: mysql.HomeRepo{Store: store}, Timezone: tz},
-		Identity: &app.IdentityService{Repo: mysql.IdentityRepo{Store: store},
+		Usage:      &app.UsageService{Repo: usageRepo},
+		Identity: &app.IdentityService{Repo: mysql.IdentityRepo{Store: store}, Usage: usageRepo,
 			Lookup: identity.New(identity.Config{Provider: cfg.DNIProvider, Token: cfg.DNIToken, BaseURL: cfg.DNIURL})},
 		Audit:        mysql.AuditRepo{Store: store},
 		Translations: mysql.TranslationRepo{Store: store},

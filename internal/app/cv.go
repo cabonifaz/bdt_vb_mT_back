@@ -9,7 +9,7 @@ import (
 
 // Translator traduce los textos de un JSON conservando su estructura (OpenAI).
 type Translator interface {
-	TranslateJSON(ctx context.Context, in []byte, lang string) ([]byte, error)
+	TranslateJSON(ctx context.Context, in []byte, lang string) ([]byte, domain.AIUsage, error)
 }
 
 // CVText son los textos libres del CV que se traducen; nombres de empresas, instituciones y tecnologías no se tocan.
@@ -57,7 +57,11 @@ func (s *TalentService) TranslateCV(ctx context.Context, p *domain.Principal, id
 		src.Educations = append(src.Educations, CVTextItem{ID: e.ID, Title: e.Career})
 	}
 	in, _ := json.Marshal(src)
-	raw, err := s.Translator.TranslateJSON(ctx, in, lang)
+	raw, usage, err := s.Translator.TranslateJSON(ctx, in, lang)
+	// los tokens se cuentan por tenant aunque la respuesta no sirva; sin key no hay llamada
+	if code := domain.AsError(err).Code; err == nil || (code != "AI_NOT_CONFIGURED" && code != "VALIDATION") {
+		recordUsage(ctx, s.Usage, *p.TenantID, domain.UsageAITranslate, usage.Model, err == nil, usage)
+	}
 	if err != nil {
 		return nil, err
 	}
