@@ -74,6 +74,7 @@ func Build(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, erro
 		Talents: &app.TalentService{Repo: mysql.TalentRepo{Store: store}, Cipher: cipher, Storage: files,
 			Translator: openAI, Reader: openAI, Usage: usageRepo, Notifier: notifications},
 		Notifications: notifications,
+		Requirements:  &app.RequirementService{Repo: mysql.RequirementRepo{Store: store}, Cipher: cipher, Notifier: notifications},
 		Sync:          mysql.SyncRepo{Store: store},
 		Blacklist:     &app.BlacklistService{Repo: mysql.BlacklistRepo{Store: store}, Cipher: cipher},
 		Interviews:    &app.InterviewService{Repo: mysql.InterviewRepo{Store: store}, Cipher: cipher, Storage: files, Timezone: tz},

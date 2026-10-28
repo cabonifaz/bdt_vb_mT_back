@@ -6,14 +6,16 @@ import (
 	"time"
 )
 
-// Tipos de notificación. Los de requerimientos (RQ) se agregan cuando se integre AutFMI.
+// Tipos de notificación: alta/actualización de talentos y de requerimientos (RQ).
 const (
 	NotifTalentCreated = "TALENT_CREATED"
 	NotifTalentUpdated = "TALENT_UPDATED"
+	NotifRQCreated     = "RQ_CREATED"
+	NotifRQUpdated     = "RQ_UPDATED"
 )
 
 // NotificationTypes: tipos que el usuario puede configurar (en la app y push).
-var NotificationTypes = []string{NotifTalentCreated, NotifTalentUpdated}
+var NotificationTypes = []string{NotifTalentCreated, NotifTalentUpdated, NotifRQCreated, NotifRQUpdated}
 
 func ValidNotificationType(t string) bool { return slices.Contains(NotificationTypes, t) }
 

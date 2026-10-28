@@ -34,6 +34,7 @@ type Deps struct {
 	Identity      *app.IdentityService
 	Usage         *app.UsageService
 	Notifications *app.NotificationService
+	Requirements  *app.RequirementService
 	Sync          ports.SyncRepository
 	Audit         ports.AuditRepository
 	Translations  ports.TranslationRepository
@@ -107,6 +108,7 @@ func (s *Server) Handler() http.Handler {
 				r.With(s.requirePerm("talent.read")).Get("/home", s.homeSummary)
 				r.With(s.requirePerm("talent.write")).Get("/identity/dni/{dni}", s.lookupDNI)
 				r.Group(s.notificationRoutes)
+				r.Group(s.requirementRoutes)
 				r.Group(s.talentRoutes)
 				r.Group(s.blacklistRoutes)
 				r.Group(s.interviewRoutes)

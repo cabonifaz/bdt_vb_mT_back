@@ -177,22 +177,75 @@ func (s *NotificationService) TalentSaved(ctx context.Context, p *domain.Princip
 		typ, group = domain.NotifTalentCreated, ""
 	}
 	payload, _ := json.Marshal(map[string]string{"name": name, "headline": headline})
-	res, err := s.Repo.Notify(context.WithoutCancel(ctx), meta(p, ""), tid, ports.NotifyInput{
-		ID: uuid.NewString(), Type: typ, GroupWith: group, EntityType: "TALENT", EntityID: talentID,
-		Payload: payload, RecipientPerm: "talent.read", GroupMinutes: notifyGroupMinutes,
+	link := "/" + p.TenantSlug + "/talentos/" + talentID
+	s.notify(ctx, p, tid, ports.NotifyInput{Type: typ, GroupWith: group, EntityType: "TALENT", EntityID: talentID,
+		Payload: payload, RecipientPerm: "talent.read"}, func(actor, locale, id string) pushMessage {
+		return talentPush(locale, created, actor, name, headline, link, id)
 	})
+}
+
+// RQChanged notifica el alta de un RQ o sus cambios (datos o estado) a los usuarios del tenant que ven requerimientos.
+func (s *NotificationService) RQChanged(ctx context.Context, p *domain.Principal, c *ports.RQChange) {
+	tid, err := tenantOf(p)
 	if err != nil {
-		slog.Warn("no se pudo registrar la notificación", "type", typ, "err", err)
+		return
+	}
+	typ, group := domain.NotifRQUpdated, domain.NotifRQCreated
+	if c.Created {
+		typ, group = domain.NotifRQCreated, ""
+	}
+	payload, _ := json.Marshal(map[string]string{"code": c.Code, "title": c.Title, "client": c.Client, "status": c.Status, "previousStatus": c.PreviousStatus})
+	link := "/" + p.TenantSlug + "/requerimientos/" + c.ID
+	s.notify(ctx, p, tid, ports.NotifyInput{Type: typ, GroupWith: group, EntityType: "REQUIREMENT", EntityID: c.ID,
+		Payload: payload, RecipientPerm: "rq.read"}, func(actor, locale, id string) pushMessage {
+		return rqPush(locale, c, actor, link, id)
+	})
+}
+
+// notify registra la notificación (agrupando cambios seguidos) y, si es nueva, envía el push en segundo plano.
+// Nunca hace fallar la operación del usuario: los errores solo se registran.
+func (s *NotificationService) notify(ctx context.Context, p *domain.Principal, tid uint64, in ports.NotifyInput, push func(actor, locale, id string) pushMessage) {
+	in.ID, in.GroupMinutes = uuid.NewString(), notifyGroupMinutes
+	res, err := s.Repo.Notify(context.WithoutCancel(ctx), meta(p, ""), tid, in)
+	if err != nil {
+		slog.Warn("no se pudo registrar la notificación", "type", in.Type, "err", err)
 		return
 	}
 	if !res.New || len(res.Targets) == 0 || s.Push == nil || !s.Push.Enabled() {
 		return
 	}
 	actor, _ := s.Cipher.Decrypt(res.ActorNameEnc)
-	link := "/" + p.TenantSlug + "/talentos/" + talentID
-	go s.deliver(res.ID, res.Targets, func(locale string) pushMessage {
-		return talentPush(locale, created, actor, name, headline, link, res.ID)
-	})
+	go s.deliver(res.ID, res.Targets, func(locale string) pushMessage { return push(actor, locale, res.ID) })
+}
+
+var rqStatusLabel = map[string][2]string{
+	"REGISTERED": {"Registrado", "Registered"}, "ASSIGNED": {"Asignado", "Assigned"}, "IN_SELECTION": {"En selección", "In selection"},
+	"IN_PRODUCTION": {"En producción", "In production"}, "ATTENDED": {"Atendido", "Fulfilled"}, "FINISHED": {"Terminado", "Finished"},
+	"LOST": {"Perdido", "Lost"}, "CANCELLED": {"Cancelado", "Cancelled"},
+}
+
+// rqPush arma el texto del push de un RQ en el idioma del destinatario.
+func rqPush(locale string, c *ports.RQChange, actor, link, id string) pushMessage {
+	en := 0
+	title, verb := "Requerimiento actualizado", "actualizó"
+	if c.Created {
+		title, verb = "Nuevo requerimiento", "registró"
+	}
+	if strings.HasPrefix(locale, "en") {
+		en = 1
+		title, verb = "Requirement updated", "updated"
+		if c.Created {
+			title, verb = "New requirement", "added"
+		}
+	}
+	body := strings.TrimSpace(actor + " " + verb + " " + c.Code + " · " + c.Title)
+	if c.Client != "" {
+		body += " (" + c.Client + ")"
+	}
+	if !c.Created && c.PreviousStatus != "" && c.PreviousStatus != c.Status {
+		body += " → " + rqStatusLabel[c.Status][en]
+	}
+	return pushMessage{Title: title, Body: body, URL: link, Tag: "rq-" + c.ID, ID: id}
 }
 
 type pushMessage struct {
