@@ -277,9 +277,10 @@ func halfYears(y float64) float64 {
 	return float64(int(y*2+0.5)) / 2
 }
 
-// FindExisting busca un talento con el mismo correo o documento (misma normalización que al guardar).
+// FindExisting busca un talento con el mismo correo o documento (misma normalización que al guardar) o, si no,
+// con el mismo nombre completo (el CV puede no traer correo ni documento).
 // La carga rápida con CV lo usa para actualizar ese talento en vez de crear uno repetido.
-func (s *TalentService) FindExisting(ctx context.Context, p *domain.Principal, email, doc string) (*domain.TalentMatch, error) {
+func (s *TalentService) FindExisting(ctx context.Context, p *domain.Principal, email, doc, first, last, second string) (*domain.TalentMatch, error) {
 	tid, err := tenantOf(p)
 	if err != nil {
 		return nil, err
@@ -293,8 +294,20 @@ func (s *TalentService) FindExisting(ctx context.Context, p *domain.Principal, e
 		b := s.Cipher.BlindIndex(d)
 		db = &b
 	}
-	if eb == nil && db == nil {
+	fn, ln, sn := nameKey(first), nameKey(last), nameKey(second)
+	if fn == nil || ln == nil {
+		fn, ln, sn = nil, nil, nil // con nombre incompleto no se compara por nombre
+	}
+	if eb == nil && db == nil && fn == nil {
 		return nil, nil
 	}
-	return s.Repo.Match(ctx, meta(p, ""), tid, eb, db)
+	return s.Repo.Match(ctx, meta(p, ""), tid, eb, db, fn, ln, sn)
+}
+
+// nameKey: nombre sin espacios sobrantes (la BD compara sin distinguir mayúsculas ni tildes); nil si está vacío.
+func nameKey(s string) *string {
+	if s = strings.Join(strings.Fields(s), " "); s == "" || utf8.RuneCountInString(s) > 100 {
+		return nil
+	}
+	return &s
 }

@@ -493,17 +493,20 @@ func (s *Server) readCV(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-// POST /talents/match {"email":"...","docNumber":"..."}: talento existente con ese correo o documento ({"match":null} si no hay).
+// POST /talents/match {email, docNumber, firstName, lastName, secondLastName}: talento existente con ese correo, documento o nombre completo ({"match":null} si no hay).
 func (s *Server) matchTalent(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Email     string `json:"email"`
-		DocNumber string `json:"docNumber"`
+		Email          string `json:"email"`
+		DocNumber      string `json:"docNumber"`
+		FirstName      string `json:"firstName"`
+		LastName       string `json:"lastName"`
+		SecondLastName string `json:"secondLastName"`
 	}
 	if err := decode(w, r, &in); err != nil {
 		s.writeErr(w, r, err)
 		return
 	}
-	m, err := s.Talents.FindExisting(r.Context(), principal(r), in.Email, in.DocNumber)
+	m, err := s.Talents.FindExisting(r.Context(), principal(r), in.Email, in.DocNumber, in.FirstName, in.LastName, in.SecondLastName)
 	if err != nil {
 		s.writeErr(w, r, err)
 		return

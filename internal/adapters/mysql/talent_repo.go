@@ -479,8 +479,8 @@ func (r SyncRepo) Complete(ctx context.Context, tenantID uint64, opID, status st
 	return r.exec(ctx, "sp_sync_complete", tenantID, opID, status, res)
 }
 
-func (r TalentRepo) Match(ctx context.Context, m ports.Meta, tenantID uint64, emailBidx, docBidx *string) (*domain.TalentMatch, error) {
-	rs, err := r.call(ctx, "sp_talent_match", m.ActorID, tenantID, emailBidx, docBidx)
+func (r TalentRepo) Match(ctx context.Context, m ports.Meta, tenantID uint64, emailBidx, docBidx, first, last, second *string) (*domain.TalentMatch, error) {
+	rs, err := r.call(ctx, "sp_talent_match", m.ActorID, tenantID, emailBidx, docBidx, first, last, second)
 	if err != nil {
 		return nil, err
 	}

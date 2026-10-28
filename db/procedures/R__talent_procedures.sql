@@ -625,17 +625,24 @@ BEGIN
   SELECT status, result FROM sync_operation WHERE tenant_id = p_tenant_id AND client_op_id = p_client_op_id;
 END $$
 
--- Talento existente con el mismo correo o documento (índices ciegos): la carga rápida con CV actualiza en vez de duplicar
+-- Talento existente con el mismo correo o documento (índices ciegos) o el mismo nombre completo (sin distinguir
+-- mayúsculas ni tildes; si uno no tiene segundo apellido basta nombres + primer apellido): la carga rápida con CV
+-- actualiza en vez de duplicar. Prioridad: correo, documento, nombre.
 DROP PROCEDURE IF EXISTS sp_talent_match $$
-CREATE PROCEDURE sp_talent_match(IN p_actor_id BIGINT UNSIGNED, IN p_tenant_id BIGINT UNSIGNED, IN p_email_bidx CHAR(64), IN p_doc_bidx CHAR(64))
+CREATE PROCEDURE sp_talent_match(IN p_actor_id BIGINT UNSIGNED, IN p_tenant_id BIGINT UNSIGNED, IN p_email_bidx CHAR(64), IN p_doc_bidx CHAR(64),
+  IN p_first VARCHAR(100), IN p_last VARCHAR(100), IN p_second VARCHAR(100))
 BEGIN
   CALL sp_assert_actor(p_actor_id, p_tenant_id, 'talent.write');
   SELECT t.uuid, t.first_name, t.last_name, t.second_last_name, t.headline,
-         IF(p_email_bidx IS NOT NULL AND t.email_bidx = p_email_bidx, 'EMAIL', 'DOC') AS matched_by
+         CASE WHEN p_email_bidx IS NOT NULL AND t.email_bidx = p_email_bidx THEN 'EMAIL'
+              WHEN p_doc_bidx IS NOT NULL AND t.doc_number_bidx = p_doc_bidx THEN 'DOC' ELSE 'NAME' END AS matched_by
     FROM talent t
    WHERE t.tenant_id = p_tenant_id AND t.deleted_at IS NULL
-     AND ((p_email_bidx IS NOT NULL AND t.email_bidx = p_email_bidx) OR (p_doc_bidx IS NOT NULL AND t.doc_number_bidx = p_doc_bidx))
-   ORDER BY (p_email_bidx IS NOT NULL AND t.email_bidx = p_email_bidx) DESC
+     AND ((p_email_bidx IS NOT NULL AND t.email_bidx = p_email_bidx) OR (p_doc_bidx IS NOT NULL AND t.doc_number_bidx = p_doc_bidx)
+          OR (p_first IS NOT NULL AND p_last IS NOT NULL AND t.first_name = p_first AND t.last_name = p_last
+              AND (p_second IS NULL OR t.second_last_name IS NULL OR t.second_last_name = p_second)))
+   ORDER BY (p_email_bidx IS NOT NULL AND t.email_bidx = p_email_bidx) DESC, (p_doc_bidx IS NOT NULL AND t.doc_number_bidx = p_doc_bidx) DESC,
+            (t.second_last_name = p_second) DESC, t.updated_at DESC
    LIMIT 1;
 END $$
 

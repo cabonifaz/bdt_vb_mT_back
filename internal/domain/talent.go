@@ -184,5 +184,5 @@ type TalentMatch struct {
 	LastName       string  `json:"lastName"`
 	SecondLastName *string `json:"secondLastName,omitempty"`
 	Headline       *string `json:"headline,omitempty"`
-	MatchedBy      string  `json:"matchedBy"` // EMAIL | DOC
+	MatchedBy      string  `json:"matchedBy"` // EMAIL | DOC | NAME
 }
