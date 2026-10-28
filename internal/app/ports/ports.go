@@ -156,4 +156,6 @@ type CVTemplateUpdate struct {
 	ShowPhoto   bool   `json:"showPhoto"`
 	ClearHeader bool   `json:"clearHeader"`
 	ClearFooter bool   `json:"clearFooter"`
+	// nil = formato por defecto
+	Style *domain.CVStyle `json:"style"`
 }

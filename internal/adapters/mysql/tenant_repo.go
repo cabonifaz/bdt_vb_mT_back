@@ -3,6 +3,7 @@ package mysql
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/app/ports"
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/domain"
@@ -97,10 +98,17 @@ func scanBranding(scan func(...any) error) (domain.Branding, error) {
 	var b domain.Branding
 	var tenantUUID, status string
 	var logoURL, logoFile, logoDark, favicon, cvHeader, cvFooter, cvText sql.NullString
+	var cvStyle []byte
 	err := scan(&b.TenantID, &tenantUUID, &b.Slug, &b.Name, &status, &b.DefaultLocale, &b.DisplayName, &logoURL,
 		&logoFile, &logoDark, &favicon, &b.ColorPrimary, &b.ColorPrimaryHov, &b.ColorSecondary, &b.ColorAccent,
-		&b.ColorSidebar, &b.FontFamily, &b.Version, &cvHeader, &cvFooter, &cvText, &b.CVShowPhoto)
+		&b.ColorSidebar, &b.FontFamily, &b.Version, &cvHeader, &cvFooter, &cvText, &b.CVShowPhoto, &cvStyle)
 	b.CVFooterText = cvText.String
+	if len(cvStyle) > 0 {
+		var st domain.CVStyle
+		if json.Unmarshal(cvStyle, &st) == nil {
+			b.CVStyle = &st
+		}
+	}
 	if cvHeader.Valid {
 		b.CVHeaderURL = "/api/v1/public/files/" + cvHeader.String
 	}
@@ -160,7 +168,15 @@ func (r TenantRepo) UpdateBranding(ctx context.Context, m ports.Meta, tenantID u
 }
 
 func (r TenantRepo) UpdateCVTemplate(ctx context.Context, m ports.Meta, tenantID uint64, t ports.CVTemplateUpdate) (*domain.Branding, error) {
-	rs, err := r.call(ctx, "sp_branding_cv_update", m.ActorID, tenantID, t.FooterText, t.ShowPhoto, t.ClearHeader, t.ClearFooter, nullStr(m.IP))
+	var style any
+	if t.Style != nil {
+		raw, err := json.Marshal(t.Style)
+		if err != nil {
+			return nil, err
+		}
+		style = string(raw)
+	}
+	rs, err := r.call(ctx, "sp_branding_cv_update", m.ActorID, tenantID, t.FooterText, t.ShowPhoto, t.ClearHeader, t.ClearFooter, style, nullStr(m.IP))
 	if err != nil {
 		return nil, err
 	}

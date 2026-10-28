@@ -77,13 +77,25 @@ func (s *TenantService) UpdateCVTemplate(ctx context.Context, p *domain.Principa
 	if p.TenantID == nil {
 		return nil, domain.ErrForbidden
 	}
-	if len([]rune(t.FooterText)) > 300 {
+	if len([]rune(t.FooterText)) > 300 || !validCVStyle(t.Style) {
 		return nil, domain.ErrValidation
 	}
 	return s.Repo.UpdateCVTemplate(ctx, meta(p, ip), *p.TenantID, t)
 }
 
 var hexColor = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
+
+func validCVStyle(st *domain.CVStyle) bool {
+	if st == nil {
+		return true
+	}
+	for _, c := range []string{st.NameColor, st.HeadingColor, st.FooterBg} {
+		if c != "" && !hexColor.MatchString(c) {
+			return false
+		}
+	}
+	return (st.NameAlign == "left" || st.NameAlign == "center") && (st.Font == "Helvetica" || st.Font == "Times-Roman")
+}
 
 func (s *TenantService) UpdateBranding(ctx context.Context, p *domain.Principal, ip string, tenantID uint64, b domain.Branding) (*domain.Branding, error) {
 	for _, c := range []string{b.ColorPrimary, b.ColorPrimaryHov, b.ColorSecondary, b.ColorAccent, b.ColorSidebar} {

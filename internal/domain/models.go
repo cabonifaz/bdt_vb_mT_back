@@ -38,10 +38,23 @@ type Branding struct {
 	FontFamily      string    `json:"fontFamily"`
 	Version         time.Time `json:"version"`
 	// Plantilla del CV con la marca del tenant
-	CVHeaderURL  string `json:"cvHeaderUrl,omitempty"`
-	CVFooterURL  string `json:"cvFooterUrl,omitempty"`
-	CVFooterText string `json:"cvFooterText,omitempty"`
-	CVShowPhoto  bool   `json:"cvShowPhoto"`
+	CVHeaderURL  string   `json:"cvHeaderUrl,omitempty"`
+	CVFooterURL  string   `json:"cvFooterUrl,omitempty"`
+	CVFooterText string   `json:"cvFooterText,omitempty"`
+	CVShowPhoto  bool     `json:"cvShowPhoto"`
+	CVStyle      *CVStyle `json:"cvStyle,omitempty"`
+}
+
+// CVStyle: formato del CV adoptado desde un CV de ejemplo (PDF) del tenant.
+type CVStyle struct {
+	NameAlign      string `json:"nameAlign"`              // left | center
+	NameColor      string `json:"nameColor,omitempty"`    // #RRGGBB
+	HeadingColor   string `json:"headingColor,omitempty"` // #RRGGBB
+	HeadingRule    bool   `json:"headingRule"`            // línea bajo los títulos de sección
+	SummaryHeading bool   `json:"summaryHeading"`         // el resumen lleva título propio
+	BoldPositions  bool   `json:"boldPositions"`          // puesto y fechas en negrita
+	FooterBg       string `json:"footerBg,omitempty"`     // recuadro del pie (#RRGGBB)
+	Font           string `json:"font"`                   // Helvetica | Times-Roman
 }
 
 type User struct {
