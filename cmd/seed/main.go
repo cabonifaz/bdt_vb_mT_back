@@ -56,6 +56,7 @@ type env struct {
 func main() {
 	reset := flag.Bool("reset", false, "borrar los datos de staging (conserva Super Admin, tenant Fractal con su marca, el admin indicado y los catálogos globales)")
 	seed := flag.Bool("seed", false, "generar los datos de prueba")
+	topup := flag.Bool("topup", false, "completar los RQ que falten en los tenants ya generados")
 	keepAdmin := flag.String("keep-admin", "", "correo del admin de Fractal que se conserva")
 	creds := flag.String("creds", "../_secrets/seed_users.env", "archivo (fuera del repo) donde se guardan las credenciales generadas")
 	workers := flag.Int("workers", 16, "llamadas concurrentes a la BD")
@@ -119,6 +120,17 @@ func main() {
 			fail(err)
 		}
 		fmt.Printf("limpieza completa en %s\n", time.Since(start).Round(time.Second))
+	}
+	if *topup {
+		for _, spec := range tenants {
+			if *only != "" && spec.Slug != *only {
+				continue
+			}
+			if err := e.topUpRQs(ctx, spec); err != nil {
+				fail(err)
+			}
+		}
+		fmt.Printf("completado (avisos: %d)\n", e.errCount.Load())
 	}
 	if *seed {
 		start := time.Now()
