@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"strings"
+	"time"
 
 	driver "github.com/go-sql-driver/mysql"
 
@@ -28,6 +29,15 @@ type resultSets struct {
 func (s *Store) call(ctx context.Context, proc string, args ...any) (*resultSets, error) {
 	q := "CALL " + proc + "(" + strings.TrimSuffix(strings.Repeat("?,", len(args)), ",") + ")"
 	rows, err := s.db.QueryContext(ctx, q, args...)
+	// interbloqueo o espera de bloqueo agotada: MySQL ya revirtió la transacción completa, así que reintentar es seguro
+	for i := 1; i <= deadlockRetries && isDeadlock(err); i++ {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(time.Duration(i*i*25) * time.Millisecond):
+		}
+		rows, err = s.db.QueryContext(ctx, q, args...)
+	}
 	if err != nil {
 		return nil, mapErr(err)
 	}
@@ -91,6 +101,14 @@ func (r *resultSets) Close() error {
 }
 
 // mapErr traduce SIGNAL SQLSTATE '45000' 'BDT:CODIGO' (MySQL 1644) a domain.Error.
+const deadlockRetries = 4
+
+// isDeadlock: 1213 (deadlock) y 1205 (lock wait timeout) se resuelven reintentando la llamada completa.
+func isDeadlock(err error) bool {
+	var me *driver.MySQLError
+	return errors.As(err, &me) && (me.Number == 1213 || me.Number == 1205)
+}
+
 func mapErr(err error) error {
 	if err == nil {
 		return nil
