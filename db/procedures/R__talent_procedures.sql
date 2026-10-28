@@ -625,4 +625,18 @@ BEGIN
   SELECT status, result FROM sync_operation WHERE tenant_id = p_tenant_id AND client_op_id = p_client_op_id;
 END $$
 
+-- Talento existente con el mismo correo o documento (índices ciegos): la carga rápida con CV actualiza en vez de duplicar
+DROP PROCEDURE IF EXISTS sp_talent_match $$
+CREATE PROCEDURE sp_talent_match(IN p_actor_id BIGINT UNSIGNED, IN p_tenant_id BIGINT UNSIGNED, IN p_email_bidx CHAR(64), IN p_doc_bidx CHAR(64))
+BEGIN
+  CALL sp_assert_actor(p_actor_id, p_tenant_id, 'talent.write');
+  SELECT t.uuid, t.first_name, t.last_name, t.second_last_name, t.headline,
+         IF(p_email_bidx IS NOT NULL AND t.email_bidx = p_email_bidx, 'EMAIL', 'DOC') AS matched_by
+    FROM talent t
+   WHERE t.tenant_id = p_tenant_id AND t.deleted_at IS NULL
+     AND ((p_email_bidx IS NOT NULL AND t.email_bidx = p_email_bidx) OR (p_doc_bidx IS NOT NULL AND t.doc_number_bidx = p_doc_bidx))
+   ORDER BY (p_email_bidx IS NOT NULL AND t.email_bidx = p_email_bidx) DESC
+   LIMIT 1;
+END $$
+
 DELIMITER ;

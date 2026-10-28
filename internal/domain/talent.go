@@ -176,3 +176,13 @@ type Colleague struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
 }
+
+// TalentMatch: talento existente con el mismo correo o documento (para no duplicar al cargar un CV).
+type TalentMatch struct {
+	ID             string  `json:"id"`
+	FirstName      string  `json:"firstName"`
+	LastName       string  `json:"lastName"`
+	SecondLastName *string `json:"secondLastName,omitempty"`
+	Headline       *string `json:"headline,omitempty"`
+	MatchedBy      string  `json:"matchedBy"` // EMAIL | DOC
+}

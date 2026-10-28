@@ -44,6 +44,7 @@ func (s *Server) talentRoutes(r chi.Router) {
 	r.With(write).Post("/talents/{id}/files", s.uploadTalentFile)
 	r.With(read, s.requirePerm("talent.cv.generate")).Post("/talents/{id}/cv/translate", s.translateCV)
 	r.With(s.requirePerm("talent.write")).Post("/talents/cv/read", s.readCV)
+	r.With(s.requirePerm("talent.write")).Post("/talents/match", s.matchTalent)
 
 	r.With(read).Get("/collections", s.listCollections)
 	r.With(read).Post("/collections", s.createCollection)
@@ -490,4 +491,23 @@ func (s *Server) readCV(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, out)
+}
+
+// POST /talents/match {"email":"...","docNumber":"..."}: talento existente con ese correo o documento ({"match":null} si no hay).
+func (s *Server) matchTalent(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Email     string `json:"email"`
+		DocNumber string `json:"docNumber"`
+	}
+	if err := decode(w, r, &in); err != nil {
+		s.writeErr(w, r, err)
+		return
+	}
+	m, err := s.Talents.FindExisting(r.Context(), principal(r), in.Email, in.DocNumber)
+	if err != nil {
+		s.writeErr(w, r, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]any{"match": m})
 }

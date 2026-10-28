@@ -478,3 +478,25 @@ func (r SyncRepo) Complete(ctx context.Context, tenantID uint64, opID, status st
 	}
 	return r.exec(ctx, "sp_sync_complete", tenantID, opID, status, res)
 }
+
+func (r TalentRepo) Match(ctx context.Context, m ports.Meta, tenantID uint64, emailBidx, docBidx *string) (*domain.TalentMatch, error) {
+	rs, err := r.call(ctx, "sp_talent_match", m.ActorID, tenantID, emailBidx, docBidx)
+	if err != nil {
+		return nil, err
+	}
+	defer rs.Close()
+	var out *domain.TalentMatch
+	if rs.Next() {
+		err = rs.Each(func(scan func(...any) error) error {
+			var x domain.TalentMatch
+			var second, headline sql.NullString
+			if err := scan(&x.ID, &x.FirstName, &x.LastName, &second, &headline, &x.MatchedBy); err != nil {
+				return err
+			}
+			x.SecondLastName, x.Headline = strPtr(second), strPtr(headline)
+			out = &x
+			return nil
+		})
+	}
+	return out, err
+}

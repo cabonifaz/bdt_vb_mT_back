@@ -50,7 +50,7 @@ func TestSanitizeCVRead(t *testing.T) {
 		out.Linkedin != "https://linkedin.com/in/ana" {
 		t.Fatalf("datos: %+v", out)
 	}
-	if len(out.TechSkills) != 2 || out.TechSkills[0].Years != 4.5 || out.TechSkills[1].Years != 0 {
+	if len(out.TechSkills) != 2 || out.TechSkills[0].Years != 4.5 || out.TechSkills[1].Years != 1 || out.TechSkills[1].YearsKnown {
 		t.Fatalf("skills: %+v", out.TechSkills)
 	}
 	if len(out.Experiences) != 1 || out.Experiences[0].StartDate != "" || out.Experiences[0].EndDate != "" {
@@ -79,10 +79,13 @@ func TestSkillYearsFromExperiences(t *testing.T) {
 			{Name: "Delphi", UsedIn: []int{4, 9, -1}},
 		},
 	}, now)
-	want := map[string]float64{"Java": 5.5, "Go": 7, "Cobol": 0.5, "Delphi": 0}
+	want := map[string]float64{"Java": 5.5, "Go": 7, "Cobol": 1, "Delphi": 1}
 	for _, s := range out.TechSkills {
 		if s.Years != want[s.Name] {
 			t.Fatalf("%s: %v años, esperado %v", s.Name, s.Years, want[s.Name])
+		}
+		if s.YearsKnown != (s.Name != "Delphi") {
+			t.Fatalf("%s: yearsKnown=%v", s.Name, s.YearsKnown)
 		}
 		if s.UsedIn != nil {
 			t.Fatalf("usedIn no se devuelve al front: %+v", s)

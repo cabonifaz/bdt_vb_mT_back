@@ -49,6 +49,7 @@ type TalentWriteResult struct {
 type TalentRepository interface {
 	Search(ctx context.Context, m Meta, tenantID uint64, f TalentFilter) (*domain.Page[domain.TalentSummary], error)
 	Get(ctx context.Context, m Meta, tenantID uint64, uuid string) (*TalentRecord, error)
+	Match(ctx context.Context, m Meta, tenantID uint64, emailBidx, docBidx *string) (*domain.TalentMatch, error)
 	Upsert(ctx context.Context, m Meta, tenantID uint64, w TalentWrite) (*TalentWriteResult, error)
 	SetStatus(ctx context.Context, m Meta, tenantID uint64, uuid, status string) error
 	SetAvailability(ctx context.Context, m Meta, tenantID uint64, uuid string, availabilityID *string) error

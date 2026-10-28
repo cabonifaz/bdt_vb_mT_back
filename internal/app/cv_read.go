@@ -45,6 +45,8 @@ type CVReadSkill struct {
 	Years float64 `json:"years"`
 	// UsedIn: experiencias (índices) donde se usó; solo viene del modelo, sirve para calcular los años
 	UsedIn []int `json:"usedIn,omitempty"`
+	// YearsKnown: los años salen del CV (explícitos o calculados); si no, es el mínimo por defecto (1)
+	YearsKnown bool `json:"yearsKnown"`
 }
 
 type CVReadExp struct {
@@ -140,7 +142,7 @@ func sanitizeCVRead(in CVRead, now time.Time) *CVRead {
 		if years <= 0 || years > 60 {
 			years = skillYears(in.Experiences, sk.UsedIn, now)
 		}
-		out.TechSkills = append(out.TechSkills, CVReadSkill{Name: name, Years: halfYears(years)})
+		out.TechSkills = append(out.TechSkills, CVReadSkill{Name: name, Years: halfYears(years), YearsKnown: years > 0})
 	}
 	for _, sk := range in.SoftSkills {
 		if name := clip(sk, 100); name != "" && !seen["soft:"+strings.ToLower(name)] && len(out.SoftSkills) < 40 {
@@ -264,16 +266,35 @@ func skillYears(exps []CVReadExp, idx []int, now time.Time) float64 {
 	return total.Hours() / 24 / 365.25
 }
 
-// halfYears redondea a medio año (el alta acepta pasos de 0,5); lo usado menos de 3 meses cuenta 0,5.
+// halfYears redondea a medio año (el alta acepta pasos de 0,5); el mínimo es 1 año (también si el CV no permite saberlo).
 func halfYears(y float64) float64 {
-	if y <= 0 {
-		return 0
+	if y < 1 {
+		return 1
 	}
 	if y > 60 {
 		y = 60
 	}
-	if r := float64(int(y*2+0.5)) / 2; r > 0 {
-		return r
+	return float64(int(y*2+0.5)) / 2
+}
+
+// FindExisting busca un talento con el mismo correo o documento (misma normalización que al guardar).
+// La carga rápida con CV lo usa para actualizar ese talento en vez de crear uno repetido.
+func (s *TalentService) FindExisting(ctx context.Context, p *domain.Principal, email, doc string) (*domain.TalentMatch, error) {
+	tid, err := tenantOf(p)
+	if err != nil {
+		return nil, err
 	}
-	return 0.5
+	var eb, db *string
+	if e := strings.ToLower(strings.TrimSpace(email)); e != "" {
+		b := s.Cipher.BlindIndex(e)
+		eb = &b
+	}
+	if d := strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(doc), " ", "")); d != "" {
+		b := s.Cipher.BlindIndex(d)
+		db = &b
+	}
+	if eb == nil && db == nil {
+		return nil, nil
+	}
+	return s.Repo.Match(ctx, meta(p, ""), tid, eb, db)
 }
