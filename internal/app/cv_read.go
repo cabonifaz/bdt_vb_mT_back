@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"regexp"
+	"sort"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/domain"
@@ -41,6 +43,8 @@ type CVRead struct {
 type CVReadSkill struct {
 	Name  string  `json:"name"`
 	Years float64 `json:"years"`
+	// UsedIn: experiencias (índices) donde se usó; solo viene del modelo, sirve para calcular los años
+	UsedIn []int `json:"usedIn,omitempty"`
 }
 
 type CVReadExp struct {
@@ -108,11 +112,11 @@ func (s *TalentService) ReadCV(ctx context.Context, p *domain.Principal, text st
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return nil, domain.NewError("AI_UNAVAILABLE")
 	}
-	return sanitizeCVRead(out), nil
+	return sanitizeCVRead(out, time.Now()), nil
 }
 
 // sanitizeCVRead acota lo que devuelve el modelo a lo que acepta el alta (largos, formatos y catálogos).
-func sanitizeCVRead(in CVRead) *CVRead {
+func sanitizeCVRead(in CVRead, now time.Time) *CVRead {
 	out := CVRead{
 		FirstName: clip(in.FirstName, 100), LastName: clip(in.LastName, 100), SecondLastName: clip(in.SecondLastName, 100),
 		DocNumber: clip(in.DocNumber, 30), City: clip(in.City, 120), Headline: clip(in.Headline, 150), Summary: clip(in.Summary, 5000),
@@ -131,11 +135,12 @@ func sanitizeCVRead(in CVRead) *CVRead {
 			continue
 		}
 		seen[strings.ToLower(name)] = true
+		// años: los que dice el CV; si no los dice, el tiempo de las experiencias donde se usó (sin contar dos veces los solapes)
 		years := sk.Years
-		if years < 0 || years > 60 {
-			years = 0
+		if years <= 0 || years > 60 {
+			years = skillYears(in.Experiences, sk.UsedIn, now)
 		}
-		out.TechSkills = append(out.TechSkills, CVReadSkill{Name: name, Years: float64(int(years*2+0.5)) / 2})
+		out.TechSkills = append(out.TechSkills, CVReadSkill{Name: name, Years: halfYears(years)})
 	}
 	for _, sk := range in.SoftSkills {
 		if name := clip(sk, 100); name != "" && !seen["soft:"+strings.ToLower(name)] && len(out.SoftSkills) < 40 {
@@ -209,4 +214,66 @@ func url(s string) string {
 		s = "https://" + s
 	}
 	return s
+}
+
+// skillYears suma la duración de las experiencias indicadas uniendo los periodos que se solapan.
+// Una experiencia actual cuenta hasta hoy; sin fecha de inicio (o sin fin y no actual) no se puede medir y se omite.
+func skillYears(exps []CVReadExp, idx []int, now time.Time) float64 {
+	type span struct{ from, to time.Time }
+	var spans []span
+	for _, i := range idx {
+		if i < 0 || i >= len(exps) {
+			continue
+		}
+		e := exps[i]
+		from, err := time.Parse("2006-01-02", strings.TrimSpace(e.StartDate))
+		if err != nil {
+			continue
+		}
+		to := now
+		if !e.Current {
+			if to, err = time.Parse("2006-01-02", strings.TrimSpace(e.EndDate)); err != nil {
+				continue
+			}
+		}
+		if to.After(now) {
+			to = now
+		}
+		if to.After(from) {
+			spans = append(spans, span{from, to})
+		}
+	}
+	sort.Slice(spans, func(a, b int) bool { return spans[a].from.Before(spans[b].from) })
+	var total time.Duration
+	var cur *span
+	for i := range spans {
+		if cur != nil && !spans[i].from.After(cur.to) {
+			if spans[i].to.After(cur.to) {
+				cur.to = spans[i].to
+			}
+			continue
+		}
+		if cur != nil {
+			total += cur.to.Sub(cur.from)
+		}
+		cur = &spans[i]
+	}
+	if cur != nil {
+		total += cur.to.Sub(cur.from)
+	}
+	return total.Hours() / 24 / 365.25
+}
+
+// halfYears redondea a medio año (el alta acepta pasos de 0,5); lo usado menos de 3 meses cuenta 0,5.
+func halfYears(y float64) float64 {
+	if y <= 0 {
+		return 0
+	}
+	if y > 60 {
+		y = 60
+	}
+	if r := float64(int(y*2+0.5)) / 2; r > 0 {
+		return r
+	}
+	return 0.5
 }

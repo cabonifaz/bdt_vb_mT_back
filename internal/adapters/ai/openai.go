@@ -66,7 +66,7 @@ Reply ONLY with a JSON object with exactly these keys (use null when a value is 
   "github": "https://github.com/juanperez",
   "headline": "Desarrollador Backend",    // current or main job title, short
   "summary": "...",                       // the profile/presentation paragraph exactly as in the CV
-  "techSkills": [{ "name": "Java", "years": 5 }],   // technologies/tools; years of experience or 0 if unknown
+  "techSkills": [{ "name": "Java", "years": 0, "usedIn": [0, 2] }],
   "softSkills": ["Trabajo en equipo"],
   "experiences": [{ "company": "TechCorp", "position": "Desarrollador Backend", "functions": "...",
                     "startDate": "2020-01-15", "endDate": null, "current": true }],
@@ -76,6 +76,11 @@ Reply ONLY with a JSON object with exactly these keys (use null when a value is 
 }
 
 Rules:
+- Technical skills: list every technology, language, framework, database, tool or methodology mentioned anywhere
+  (skills section, summary and the functions of each experience), one entry per technology with its usual name.
+  "usedIn" = indexes (0-based, in the "experiences" array you return) of EVERY experience whose position or functions
+  mention or clearly imply that technology. "years" = only when the CV states the years explicitly for that technology
+  (e.g. "Java (8 años)", "5+ years of React"); otherwise 0 — the years are computed from the experience dates.
 - Work experiences: most recent first (current ones first, then by end date, then by start date).
 - Functions: do not summarize; keep them as close as possible to the original text, fixing only obvious spelling and
   grammar errors. Include BOTH the initial descriptive paragraph AND every bullet point under the experience, joined in a
