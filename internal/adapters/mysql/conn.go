@@ -34,10 +34,8 @@ func Open(ctx context.Context, c ConnConfig) (*sql.DB, error) {
 	// parámetros interpolados por el driver (escapados para utf8mb4): 1 viaje por consulta en vez de 2 (preparar + ejecutar).
 	// Con la BD lejos (~200 ms por viaje) reduce a la mitad el tiempo de cada llamada.
 	cfg.InterpolateParams = true
-	// compresión zlib del protocolo: las respuestas grandes (tablero, búsquedas) necesitan menos viajes de red
-	if err := cfg.Apply(driver.EnableCompression(true)); err != nil {
-		return nil, err
-	}
+	// Sin compresión zlib: con el driver v1.10 desincroniza el protocolo en los CALL con varios result sets
+	// ("unexpected sequence nr"); se probó y se descartó.
 	if c.TLS != "" {
 		cfg.TLSConfig = c.TLS
 	}
