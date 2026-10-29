@@ -16,7 +16,7 @@ type RQWrite struct {
 	DurationValue, ContractValue                                           *float64
 	DurationUnitID, ContractUnitID, WorkModalityID                         *string
 	NeedsEmo, NeedsSctr, NeedsLaptop                                       bool
-	Owners, Contacts, Billing, Vacancies                                   json.RawMessage
+	Owners, Contacts, Billing, Vacancies, Documents                        json.RawMessage
 	ExpectedVersion                                                        *int
 }
 

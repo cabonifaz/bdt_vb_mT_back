@@ -155,6 +155,16 @@ BEGIN
            'candidates', IFNULL((SELECT JSON_ARRAYAGG(JSON_OBJECT('id', rc.uuid, 'vacancyId', v.uuid, 'boardOrder', rc.board_order, 'notes', rc.notes,
                           'stage', JSON_OBJECT('id', cs.uuid, 'code', cs.code, 'label', cs.label_i18n), 'updatedAt', IFNULL(rc.updated_at, rc.created_at),
                           'resignation', IF(rc.resigned_at IS NULL, NULL, JSON_OBJECT('at', rc.resigned_at, 'offboard', rc.offboard_status, 'offboardAt', rc.offboard_at)),
+                          'docs', IFNULL((SELECT JSON_ARRAYAGG(JSON_OBJECT('typeId', rdt.uuid, 'mode', rd.mode,
+                                     'status', IFNULL((SELECT IF(td.expires_at IS NOT NULL AND td.expires_at < CURDATE(), 'EXPIRED', td.status)
+                                                         FROM talent_document td
+                                                        WHERE td.talent_id = rc.talent_id AND td.document_type_item_id = rd.document_type_item_id
+                                                          AND td.deleted_at IS NULL AND (IFNULL(rdr.reusable, 1) = 1 OR td.candidate_id = rc.id)
+                                                        ORDER BY td.id DESC LIMIT 1), 'MISSING')))
+                                    FROM requirement_document rd
+                                    JOIN master_item rdt ON rdt.id = rd.document_type_item_id
+                                    LEFT JOIN document_rule rdr ON rdr.tenant_id = r.tenant_id AND rdr.document_type_item_id = rd.document_type_item_id
+                                   WHERE rd.requirement_id = r.id), JSON_ARRAY()),
                           'talent', JSON_OBJECT('id', t.uuid, 'firstName', t.first_name, 'lastName', t.last_name, 'secondLastName', t.second_last_name,
                                      'headline', t.headline, 'photoId', ph.uuid, 'status', t.status,
                                      'blacklisted', EXISTS (SELECT 1 FROM talent_blacklist b WHERE b.talent_id = t.id AND b.deleted_at IS NULL
@@ -165,6 +175,12 @@ BEGIN
                         JOIN talent t ON t.id = rc.talent_id
                         LEFT JOIN file_object ph ON ph.id = t.photo_file_id AND ph.deleted_at IS NULL
                        WHERE rc.requirement_id = r.id AND rc.deleted_at IS NULL), JSON_ARRAY()),
+           'documents', IFNULL((SELECT JSON_ARRAYAGG(JSON_OBJECT('typeId', dt.uuid, 'code', dt.code, 'label', dt.label_i18n, 'mode', rd.mode,
+                          'reusable', IFNULL(dr.reusable, 1) = 1, 'validityDays', dr.validity_days, 'verification', IFNULL(dr.verification, 'MANUAL'), 'sortOrder', IFNULL(dr.sort_order, 0)))
+                        FROM requirement_document rd
+                        JOIN master_item dt ON dt.id = rd.document_type_item_id
+                        LEFT JOIN document_rule dr ON dr.tenant_id = r.tenant_id AND dr.document_type_item_id = rd.document_type_item_id
+                       WHERE rd.requirement_id = r.id), JSON_ARRAY()),
            'reopens', IFNULL((SELECT JSON_ARRAYAGG(JSON_OBJECT('reason', ro.reason, 'notes', ro.notes, 'createdAt', ro.created_at,
                           'from', fs.label_i18n, 'to', ts.label_i18n,
                           'resigned', (SELECT JSON_ARRAYAGG(JSON_OBJECT('candidateId', rc.uuid, 'firstName', t.first_name, 'lastName', t.last_name,
@@ -192,7 +208,7 @@ CREATE PROCEDURE sp_rq_save(IN p_actor_id BIGINT UNSIGNED, IN p_tenant_id BIGINT
   IN p_request_date DATE, IN p_due_date DATE, IN p_duration_value DECIMAL(8,2), IN p_duration_unit_uuid CHAR(36),
   IN p_contract_value DECIMAL(8,2), IN p_contract_unit_uuid CHAR(36), IN p_work_modality_uuid CHAR(36),
   IN p_emo TINYINT(1), IN p_sctr TINYINT(1), IN p_laptop TINYINT(1), IN p_owners JSON,
-  IN p_contacts JSON, IN p_billing JSON, IN p_vacancies JSON, IN p_expected_version INT, IN p_ip VARCHAR(45))
+  IN p_contacts JSON, IN p_billing JSON, IN p_vacancies JSON, IN p_documents JSON, IN p_expected_version INT, IN p_ip VARCHAR(45))
 BEGIN
   DECLARE v_id, v_client, v_status, v_du, v_cu, v_wm BIGINT UNSIGNED;
   DECLARE v_owner_count, v_owner_valid INT;
@@ -315,6 +331,17 @@ BEGIN
       JOIN master_table mct ON mct.id = ct.master_table_id AND mct.code = 'CONTRACT_MODALITY'
       JOIN master_item cur ON cur.uuid = j.currency AND cur.deleted_at IS NULL
       JOIN master_table mcur ON mcur.id = cur.master_table_id AND mcur.code = 'CURRENCY';
+  END IF;
+
+  -- documentos que se piden a los postulantes (tipos visibles para el tenant)
+  IF p_documents IS NOT NULL THEN
+    DELETE FROM requirement_document WHERE requirement_id = v_id;
+    INSERT INTO requirement_document (requirement_id, document_type_item_id, mode)
+    SELECT DISTINCT v_id, dt.id, j.mode
+      FROM JSON_TABLE(p_documents, '$[*]' COLUMNS (tid CHAR(36) PATH '$.typeId', mode VARCHAR(10) PATH '$.mode')) j
+      JOIN master_item dt ON dt.uuid = j.tid AND dt.deleted_at IS NULL AND (dt.tenant_id IS NULL OR dt.tenant_id = p_tenant_id)
+      JOIN master_table mdt ON mdt.id = dt.master_table_id AND mdt.code = 'DOCUMENT_TYPE'
+     WHERE j.mode IN ('REQUIRED','OPTIONAL');
   END IF;
 
   -- vacantes: alta/edición por uuid; las que no vienen se dan de baja si no tienen candidatos
@@ -464,6 +491,9 @@ BEGIN
       JOIN JSON_TABLE(p_candidates, '$[*]' COLUMNS (cid CHAR(36) PATH '$')) j ON j.cid = rc.uuid
        SET rc.resigned_at = NOW(3), rc.resign_reopen_id = v_reopen, rc.offboard_status = 'PENDING', rc.updated_by = p_actor_id
      WHERE rc.requirement_id = v_id;
+    INSERT INTO requirement_candidate_event (candidate_id, type, data, created_by)
+    SELECT rc.id, 'RESIGNED', JSON_OBJECT('notes', NULLIF(TRIM(p_notes), '')), p_actor_id
+      FROM requirement_candidate rc WHERE rc.resign_reopen_id = v_reopen;
   END IF;
   COMMIT;
   CALL sp_audit_insert(p_tenant_id, p_actor_id, NULL, 'REOPEN', 'requirement', p_uuid,
@@ -516,6 +546,8 @@ BEGIN
      WHERE m.code = 'CANDIDATE_STAGE' AND i.code = 'OBSERVED';
     INSERT INTO requirement_candidate (uuid, requirement_id, vacancy_id, talent_id, stage_item_id, created_by)
     VALUES (p_uuid, v_rq, v_vac, v_talent, v_stage, p_actor_id);
+    INSERT INTO requirement_candidate_event (candidate_id, type, data, created_by)
+    VALUES (LAST_INSERT_ID(), 'ADDED', JSON_OBJECT('stage', 'OBSERVED'), p_actor_id);
     CALL sp_audit_insert(p_tenant_id, p_actor_id, NULL, 'CANDIDATE_ADD', 'requirement', p_rq_uuid, JSON_OBJECT('talent', p_talent_uuid), p_ip);
     SELECT p_uuid AS uuid, 1 AS created;
   END IF;
@@ -563,6 +595,10 @@ BEGIN
   UPDATE requirement_candidate SET stage_item_id = v_stage, vacancy_id = v_new_vac, board_order = IFNULL(p_board_order, board_order),
          updated_by = p_actor_id WHERE id = v_id;
   UPDATE requirement SET updated_by = p_actor_id, updated_at = NOW(3) WHERE id = v_rq;
+  IF v_from <> v_to OR v_new_vac <> v_vac THEN
+    INSERT INTO requirement_candidate_event (candidate_id, type, data, created_by)
+    VALUES (v_id, 'STAGE', JSON_OBJECT('from', v_from, 'to', v_to, 'vacancyChanged', v_new_vac <> v_vac), p_actor_id);
+  END IF;
   IF v_from <> v_to THEN
     CALL sp_audit_insert(p_tenant_id, p_actor_id, NULL, 'CANDIDATE_STAGE', 'requirement', v_rq_uuid,
          JSON_OBJECT('candidate', p_uuid, 'from', v_from, 'to', v_to), p_ip);

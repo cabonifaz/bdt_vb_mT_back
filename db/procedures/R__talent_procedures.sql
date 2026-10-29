@@ -569,7 +569,7 @@ BEGIN
   DECLARE v_file BIGINT UNSIGNED;
   CALL sp_assert_actor(p_actor_id, p_tenant_id, 'talent.write');
   CALL sp_talent_resolve(p_tenant_id, p_talent_uuid, v_talent);
-  IF p_category NOT IN ('PHOTO','CV','CV_TENANT_ES','CV_TENANT_EN','CERTIFICATE','OTHER') THEN
+  IF p_category NOT IN ('PHOTO','CV','CV_TENANT_ES','CV_TENANT_EN','CERTIFICATE','DOCUMENT','OTHER') THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:INVALID_KIND';
   END IF;
   INSERT INTO file_object (uuid, tenant_id, owner_type, owner_id, category, storage_key, original_name, mime_type,

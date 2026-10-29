@@ -457,7 +457,7 @@ func (s *TalentService) UploadFile(ctx context.Context, p *domain.Principal, ip,
 	allowed := docMimes
 	if category == "PHOTO" {
 		allowed = imgMimes
-	} else if category == "CERTIFICATE" || category == "OTHER" {
+	} else if category == "CERTIFICATE" || category == "DOCUMENT" || category == "OTHER" {
 		allowed = map[string]string{}
 		for k, v := range docMimes {
 			allowed[k] = v

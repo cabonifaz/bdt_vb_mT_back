@@ -122,7 +122,7 @@ func (r RequirementRepo) change(rs *resultSets, withCreated bool) (*ports.RQChan
 func (r RequirementRepo) Save(ctx context.Context, m ports.Meta, tenantID uint64, w ports.RQWrite) (*ports.RQChange, error) {
 	rs, err := r.call(ctx, "sp_rq_save", m.ActorID, tenantID, w.ID, nullStr(w.Code), w.ClientID, w.Title, nullStr(w.Description), w.StatusID,
 		w.RequestDate, w.DueDate, optF(w.DurationValue), w.DurationUnitID, optF(w.ContractValue), w.ContractUnitID, w.WorkModalityID,
-		w.NeedsEmo, w.NeedsSctr, w.NeedsLaptop, optJSON(w.Owners), optJSON(w.Contacts), optJSON(w.Billing), optJSON(w.Vacancies),
+		w.NeedsEmo, w.NeedsSctr, w.NeedsLaptop, optJSON(w.Owners), optJSON(w.Contacts), optJSON(w.Billing), optJSON(w.Vacancies), optJSON(w.Documents),
 		optI(w.ExpectedVersion), nullStr(m.IP))
 	if err != nil {
 		return nil, err

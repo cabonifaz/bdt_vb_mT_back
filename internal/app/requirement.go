@@ -27,6 +27,12 @@ type RQNotifier interface {
 	RQChanged(ctx context.Context, p *domain.Principal, c *ports.RQChange)
 }
 
+// RQDocInput: documento que se pide a los postulantes del RQ. Documents nil = sin cambios.
+type RQDocInput struct {
+	TypeID string `json:"typeId"`
+	Mode   string `json:"mode"` // REQUIRED | OPTIONAL
+}
+
 type RQSkillInput struct {
 	SkillID  string   `json:"skillId"`
 	Years    *float64 `json:"years"`
@@ -78,6 +84,7 @@ type RQInput struct {
 	ContractUnitID  *string          `json:"contractUnitId"`
 	WorkModalityID  *string          `json:"workModalityId"`
 	OwnerIDs        []string         `json:"ownerIds"`
+	Documents       []RQDocInput     `json:"documents"`
 	NeedsEmo        bool             `json:"needsEmo"`
 	NeedsSctr       bool             `json:"needsSctr"`
 	NeedsLaptop     bool             `json:"needsLaptop"`
@@ -122,6 +129,14 @@ func validRQ(in *RQInput) bool {
 	}
 	for _, o := range in.OwnerIDs {
 		if !validUUID(o) {
+			return false
+		}
+	}
+	if len(in.Documents) > 50 {
+		return false
+	}
+	for _, d := range in.Documents {
+		if !validUUID(d.TypeID) || (d.Mode != "REQUIRED" && d.Mode != "OPTIONAL") {
 			return false
 		}
 	}
@@ -288,15 +303,18 @@ func (s *RequirementService) Save(ctx context.Context, p *domain.Principal, ip, 
 		billing, _ = json.Marshal(in.Billing)
 	}
 	// responsables: sin lista = sin cambios (en el alta, quien registra)
-	var owners json.RawMessage
+	var owners, documents json.RawMessage
 	if len(in.OwnerIDs) > 0 {
 		owners, _ = json.Marshal(in.OwnerIDs)
+	}
+	if in.Documents != nil {
+		documents, _ = json.Marshal(in.Documents)
 	}
 	c, err := s.Repo.Save(ctx, meta(p, ip), tid, ports.RQWrite{
 		ID: id, Code: in.Code, ClientID: in.ClientID, Title: in.Title, Description: in.Description, StatusID: in.StatusID,
 		RequestDate: in.RequestDate, DueDate: in.DueDate, DurationValue: in.DurationValue, DurationUnitID: nilIfEmpty(in.DurationUnitID),
 		ContractValue: in.ContractValue, ContractUnitID: nilIfEmpty(in.ContractUnitID), WorkModalityID: nilIfEmpty(in.WorkModalityID),
-		Owners: owners, NeedsEmo: in.NeedsEmo, NeedsSctr: in.NeedsSctr, NeedsLaptop: in.NeedsLaptop,
+		Owners: owners, Documents: documents, NeedsEmo: in.NeedsEmo, NeedsSctr: in.NeedsSctr, NeedsLaptop: in.NeedsLaptop,
 		Contacts: contacts, Billing: billing, Vacancies: vacancies, ExpectedVersion: in.ExpectedVersion,
 	})
 	if err == nil && c != nil && s.Notifier != nil {
