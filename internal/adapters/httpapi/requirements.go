@@ -21,7 +21,7 @@ func (s *Server) requirementRoutes(r chi.Router) {
 	r.With(read).Get("/requirements/{id}", s.rqGet)
 	r.With(write).Put("/requirements/{id}", s.rqSave)
 	r.With(write).Patch("/requirements/{id}/status", s.rqStatus)
-	r.With(write).Delete("/requirements/{id}", s.rqDelete)
+	r.With(s.requirePerm("rq.delete")).Delete("/requirements/{id}", s.rqDelete)
 	r.With(s.requirePerm("rq.reopen")).Post("/requirements/{id}/reopen", s.rqReopen)
 	r.With(cand).Post("/requirements/{id}/candidates", s.rqAddCandidate)
 	r.With(cand).Patch("/requirements/candidates/{cid}", s.rqMoveCandidate)
@@ -103,15 +103,16 @@ func (s *Server) rqStatus(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) rqReopen(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Reason   string `json:"reason"`
-		Notes    string `json:"notes"`
-		StatusID string `json:"statusId"`
+		Reason     string   `json:"reason"`
+		Notes      string   `json:"notes"`
+		Candidates []string `json:"candidates"`
+		StatusID   string   `json:"statusId"`
 	}
 	if err := decode(w, r, &in); err != nil {
 		s.writeErr(w, r, err)
 		return
 	}
-	c, err := s.Requirements.Reopen(r.Context(), principal(r), s.clientIP(r), chi.URLParam(r, "id"), in.Reason, in.Notes, in.StatusID)
+	c, err := s.Requirements.Reopen(r.Context(), principal(r), s.clientIP(r), chi.URLParam(r, "id"), in.Reason, in.Notes, in.Candidates, in.StatusID)
 	if err != nil {
 		s.writeErr(w, r, err)
 		return

@@ -144,8 +144,13 @@ func (r RequirementRepo) SetStatus(ctx context.Context, m ports.Meta, tenantID u
 	return r.change(rs, false)
 }
 
-func (r RequirementRepo) Reopen(ctx context.Context, m ports.Meta, tenantID uint64, id, reason, notes string, statusID *string) (*ports.RQChange, error) {
-	rs, err := r.call(ctx, "sp_rq_reopen", m.ActorID, tenantID, id, reason, nullStr(notes), statusID, nullStr(m.IP))
+func (r RequirementRepo) Reopen(ctx context.Context, m ports.Meta, tenantID uint64, id, reason, notes string, candidates []string, statusID *string) (*ports.RQChange, error) {
+	var cands any
+	if len(candidates) > 0 {
+		b, _ := json.Marshal(candidates)
+		cands = string(b)
+	}
+	rs, err := r.call(ctx, "sp_rq_reopen", m.ActorID, tenantID, id, reason, nullStr(notes), cands, statusID, nullStr(m.IP))
 	if err != nil {
 		return nil, err
 	}

@@ -71,11 +71,11 @@ BEGIN
            'ownerId', o.uuid,
            'vacancies', (SELECT IFNULL(SUM(v.quantity), 0) FROM requirement_vacancy v WHERE v.requirement_id = r.id AND v.deleted_at IS NULL),
            'covered', (SELECT COUNT(*) FROM requirement_candidate rc JOIN master_item cs ON cs.id = rc.stage_item_id
-                        WHERE rc.requirement_id = r.id AND rc.deleted_at IS NULL AND cs.code = 'CONFIRMED'),
+                        WHERE rc.requirement_id = r.id AND rc.deleted_at IS NULL AND rc.resigned_at IS NULL AND cs.code = 'CONFIRMED'),
            'candidates', (SELECT COUNT(*) FROM requirement_candidate rc WHERE rc.requirement_id = r.id AND rc.deleted_at IS NULL),
            'profiles', (SELECT JSON_ARRAYAGG(JSON_OBJECT('label', p.label_i18n, 'total', v.quantity,
                           'covered', (SELECT COUNT(*) FROM requirement_candidate rc JOIN master_item cs ON cs.id = rc.stage_item_id
-                                       WHERE rc.vacancy_id = v.id AND rc.deleted_at IS NULL AND cs.code = 'CONFIRMED')))
+                                       WHERE rc.vacancy_id = v.id AND rc.deleted_at IS NULL AND rc.resigned_at IS NULL AND cs.code = 'CONFIRMED')))
                           FROM requirement_vacancy v JOIN master_item p ON p.id = v.profile_item_id
                          WHERE v.requirement_id = r.id AND v.deleted_at IS NULL)
          ) AS doc,
@@ -141,7 +141,7 @@ BEGIN
            'vacancies', IFNULL((SELECT JSON_ARRAYAGG(JSON_OBJECT('id', v.uuid, 'profileId', p.uuid, 'profile', p.label_i18n, 'quantity', v.quantity,
                           'rateInitial', IF(v_rates = 1, v.rate_initial, NULL), 'rateFinal', IF(v_rates = 1, v.rate_final, NULL),
                           'covered', (SELECT COUNT(*) FROM requirement_candidate rc JOIN master_item cs ON cs.id = rc.stage_item_id
-                                       WHERE rc.vacancy_id = v.id AND rc.deleted_at IS NULL AND cs.code = 'CONFIRMED'),
+                                       WHERE rc.vacancy_id = v.id AND rc.deleted_at IS NULL AND rc.resigned_at IS NULL AND cs.code = 'CONFIRMED'),
                           'skills', IFNULL((SELECT JSON_ARRAYAGG(JSON_OBJECT('skillId', sk.uuid, 'label', sk.label_i18n, 'years', vs.years, 'optional', vs.optional = 1))
                                       FROM vacancy_skill vs JOIN master_item sk ON sk.id = vs.skill_item_id WHERE vs.vacancy_id = v.id), JSON_ARRAY()),
                           'careers', IFNULL((SELECT JSON_ARRAYAGG(JSON_OBJECT('career', vc.career, 'gradeId', g.uuid, 'grade', g.label_i18n, 'optional', vc.optional = 1))
@@ -150,6 +150,7 @@ BEGIN
                        WHERE v.requirement_id = r.id AND v.deleted_at IS NULL), JSON_ARRAY()),
            'candidates', IFNULL((SELECT JSON_ARRAYAGG(JSON_OBJECT('id', rc.uuid, 'vacancyId', v.uuid, 'boardOrder', rc.board_order, 'notes', rc.notes,
                           'stage', JSON_OBJECT('id', cs.uuid, 'code', cs.code, 'label', cs.label_i18n), 'updatedAt', IFNULL(rc.updated_at, rc.created_at),
+                          'resignation', IF(rc.resigned_at IS NULL, NULL, JSON_OBJECT('at', rc.resigned_at, 'offboard', rc.offboard_status, 'offboardAt', rc.offboard_at)),
                           'talent', JSON_OBJECT('id', t.uuid, 'firstName', t.first_name, 'lastName', t.last_name, 'secondLastName', t.second_last_name,
                                      'headline', t.headline, 'photoId', ph.uuid, 'status', t.status,
                                      'blacklisted', EXISTS (SELECT 1 FROM talent_blacklist b WHERE b.talent_id = t.id AND b.deleted_at IS NULL
@@ -161,7 +162,11 @@ BEGIN
                         LEFT JOIN file_object ph ON ph.id = t.photo_file_id AND ph.deleted_at IS NULL
                        WHERE rc.requirement_id = r.id AND rc.deleted_at IS NULL), JSON_ARRAY()),
            'reopens', IFNULL((SELECT JSON_ARRAYAGG(JSON_OBJECT('reason', ro.reason, 'notes', ro.notes, 'createdAt', ro.created_at,
-                          'from', fs.label_i18n, 'to', ts.label_i18n))
+                          'from', fs.label_i18n, 'to', ts.label_i18n,
+                          'resigned', (SELECT JSON_ARRAYAGG(JSON_OBJECT('candidateId', rc.uuid, 'firstName', t.first_name, 'lastName', t.last_name,
+                                         'secondLastName', t.second_last_name))
+                                         FROM requirement_candidate rc JOIN talent t ON t.id = rc.talent_id
+                                        WHERE rc.resign_reopen_id = ro.id)))
                         FROM requirement_reopen ro JOIN master_item fs ON fs.id = ro.from_status_id JOIN master_item ts ON ts.id = ro.to_status_id
                        WHERE ro.requirement_id = r.id), JSON_ARRAY())
          ) AS doc,
@@ -325,7 +330,7 @@ BEGIN
   -- la cantidad no puede quedar por debajo de los ya confirmados
   IF EXISTS (SELECT 1 FROM requirement_vacancy v WHERE v.requirement_id = v_id AND v.deleted_at IS NULL
                AND v.quantity < (SELECT COUNT(*) FROM requirement_candidate rc JOIN master_item cs ON cs.id = rc.stage_item_id
-                                  WHERE rc.vacancy_id = v.id AND rc.deleted_at IS NULL AND cs.code = 'CONFIRMED')) THEN
+                                  WHERE rc.vacancy_id = v.id AND rc.deleted_at IS NULL AND rc.resigned_at IS NULL AND cs.code = 'CONFIRMED')) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:VACANCY_BELOW_CONFIRMED';
   END IF;
 
@@ -387,11 +392,14 @@ END $$
 
 -- Reabrir un RQ cerrado (renunció un talento o se amplían las vacantes) para postular más personas y hacer
 -- un nuevo ingreso. Solo con rq.reopen (jefe de selección). Vuelve a p_status_uuid (abierto) o a En selección.
+-- Por renuncia, p_candidates (JSON con uuids) indica qué confirmados renunciaron: se marcan, dejan de cubrir la
+-- vacante y su baja queda pendiente hasta que el FMI la confirme.
 DROP PROCEDURE IF EXISTS sp_rq_reopen $$
 CREATE PROCEDURE sp_rq_reopen(IN p_actor_id BIGINT UNSIGNED, IN p_tenant_id BIGINT UNSIGNED, IN p_uuid CHAR(36),
-  IN p_reason VARCHAR(20), IN p_notes VARCHAR(500), IN p_status_uuid CHAR(36), IN p_ip VARCHAR(45))
+  IN p_reason VARCHAR(20), IN p_notes VARCHAR(500), IN p_candidates JSON, IN p_status_uuid CHAR(36), IN p_ip VARCHAR(45))
 BEGIN
-  DECLARE v_id, v_status, v_from BIGINT UNSIGNED;
+  DECLARE v_id, v_status, v_from, v_reopen BIGINT UNSIGNED;
+  DECLARE v_count, v_valid INT;
   DECLARE v_closed TINYINT(1);
   DECLARE v_old VARCHAR(60);
   DECLARE v_new VARCHAR(60);
@@ -400,6 +408,17 @@ BEGIN
   CALL sp_rq_resolve(p_tenant_id, p_uuid, v_id, v_closed);
   IF v_closed = 0 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:RQ_NOT_CLOSED'; END IF;
   IF p_reason IS NULL OR p_reason NOT IN ('RESIGNATION', 'MORE_VACANCIES') THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:VALIDATION';
+  END IF;
+  -- renuncia: al menos un candidato, todos confirmados en este RQ y sin renuncia previa; más vacantes: ninguno
+  SET v_count = IF(p_candidates IS NULL, 0, JSON_LENGTH(p_candidates));
+  IF p_reason = 'RESIGNATION' THEN
+    SELECT COUNT(DISTINCT rc.id) INTO v_valid
+      FROM JSON_TABLE(p_candidates, '$[*]' COLUMNS (cid CHAR(36) PATH '$')) j
+      JOIN requirement_candidate rc ON rc.uuid = j.cid AND rc.requirement_id = v_id AND rc.deleted_at IS NULL AND rc.resigned_at IS NULL
+      JOIN master_item cs ON cs.id = rc.stage_item_id AND cs.code = 'CONFIRMED';
+    IF v_count = 0 OR v_valid <> v_count THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:RESIGNED_CANDIDATE_INVALID'; END IF;
+  ELSEIF v_count > 0 THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:VALIDATION';
   END IF;
   IF p_status_uuid IS NULL THEN
@@ -417,9 +436,16 @@ BEGIN
   UPDATE requirement SET status_item_id = v_status, version = version + 1, updated_by = p_actor_id WHERE id = v_id;
   INSERT INTO requirement_reopen (requirement_id, reason, notes, from_status_id, to_status_id, created_by)
   VALUES (v_id, p_reason, NULLIF(TRIM(p_notes), ''), v_from, v_status, p_actor_id);
+  SET v_reopen = LAST_INSERT_ID();
+  IF p_reason = 'RESIGNATION' THEN
+    UPDATE requirement_candidate rc
+      JOIN JSON_TABLE(p_candidates, '$[*]' COLUMNS (cid CHAR(36) PATH '$')) j ON j.cid = rc.uuid
+       SET rc.resigned_at = NOW(3), rc.resign_reopen_id = v_reopen, rc.offboard_status = 'PENDING', rc.updated_by = p_actor_id
+     WHERE rc.requirement_id = v_id;
+  END IF;
   COMMIT;
   CALL sp_audit_insert(p_tenant_id, p_actor_id, NULL, 'REOPEN', 'requirement', p_uuid,
-    JSON_OBJECT('from', v_old, 'to', v_new, 'reason', p_reason), p_ip);
+    JSON_OBJECT('from', v_old, 'to', v_new, 'reason', p_reason, 'candidates', p_candidates), p_ip);
   SELECT r.uuid, r.version, r.code, v_old AS previous_status, v_new AS status, r.title,
          JSON_UNQUOTE(JSON_EXTRACT(c.label_i18n, '$.es')) AS client
     FROM requirement r JOIN master_item c ON c.id = r.client_item_id WHERE r.id = v_id;
@@ -430,7 +456,7 @@ CREATE PROCEDURE sp_rq_delete(IN p_actor_id BIGINT UNSIGNED, IN p_tenant_id BIGI
 BEGIN
   DECLARE v_id BIGINT UNSIGNED;
   DECLARE v_closed TINYINT(1);
-  CALL sp_assert_actor(p_actor_id, p_tenant_id, 'rq.write');
+  CALL sp_assert_actor(p_actor_id, p_tenant_id, 'rq.delete'); -- solo el administrador del tenant
   CALL sp_rq_resolve(p_tenant_id, p_uuid, v_id, v_closed);
   IF EXISTS (SELECT 1 FROM requirement_candidate rc JOIN master_item cs ON cs.id = rc.stage_item_id
               WHERE rc.requirement_id = v_id AND rc.deleted_at IS NULL AND cs.code = 'CONFIRMED') THEN
@@ -484,9 +510,10 @@ BEGIN
   DECLARE v_closed TINYINT(1);
   DECLARE v_from VARCHAR(60);
   DECLARE v_to VARCHAR(60);
+  DECLARE v_resigned TINYINT(1);
   CALL sp_assert_actor(p_actor_id, p_tenant_id, 'rq.candidates');
-  SELECT rc.id, rc.requirement_id, rc.vacancy_id, cs.code, r.uuid, (s.str1 = 'CLOSED')
-    INTO v_id, v_rq, v_vac, v_from, v_rq_uuid, v_closed
+  SELECT rc.id, rc.requirement_id, rc.vacancy_id, cs.code, r.uuid, (s.str1 = 'CLOSED'), rc.resigned_at IS NOT NULL
+    INTO v_id, v_rq, v_vac, v_from, v_rq_uuid, v_closed, v_resigned
     FROM requirement_candidate rc
     JOIN requirement r ON r.id = rc.requirement_id AND r.tenant_id = p_tenant_id AND r.deleted_at IS NULL
     JOIN master_item s ON s.id = r.status_item_id
@@ -494,6 +521,7 @@ BEGIN
    WHERE rc.uuid = p_uuid AND rc.deleted_at IS NULL;
   IF v_id IS NULL THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:NOT_FOUND'; END IF;
   IF v_closed = 1 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:RQ_CLOSED'; END IF;
+  IF v_resigned = 1 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:CANDIDATE_RESIGNED'; END IF;
   CALL sp_master_resolve(p_tenant_id, 'CANDIDATE_STAGE', p_stage_uuid, v_stage);
   IF v_stage IS NULL THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:VALIDATION'; END IF;
   SELECT code INTO v_to FROM master_item WHERE id = v_stage;
@@ -505,7 +533,7 @@ BEGIN
   IF v_to = 'CONFIRMED' AND (v_from <> 'CONFIRMED' OR v_new_vac <> v_vac) THEN
     IF v_from = 'OBSERVED' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:CANDIDATE_NOT_READY'; END IF;
     IF (SELECT COUNT(*) FROM requirement_candidate rc JOIN master_item cs ON cs.id = rc.stage_item_id
-         WHERE rc.vacancy_id = v_new_vac AND rc.deleted_at IS NULL AND cs.code = 'CONFIRMED' AND rc.id <> v_id)
+         WHERE rc.vacancy_id = v_new_vac AND rc.deleted_at IS NULL AND rc.resigned_at IS NULL AND cs.code = 'CONFIRMED' AND rc.id <> v_id)
        >= (SELECT quantity FROM requirement_vacancy WHERE id = v_new_vac) THEN
       SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:VACANCY_FULL';
     END IF;
@@ -525,15 +553,16 @@ CREATE PROCEDURE sp_rq_candidate_remove(IN p_actor_id BIGINT UNSIGNED, IN p_tena
 BEGIN
   DECLARE v_id, v_rq BIGINT UNSIGNED;
   DECLARE v_rq_uuid CHAR(36);
-  DECLARE v_closed TINYINT(1);
+  DECLARE v_closed, v_resigned TINYINT(1);
   CALL sp_assert_actor(p_actor_id, p_tenant_id, 'rq.candidates');
-  SELECT rc.id, r.id, r.uuid, (s.str1 = 'CLOSED') INTO v_id, v_rq, v_rq_uuid, v_closed
+  SELECT rc.id, r.id, r.uuid, (s.str1 = 'CLOSED'), rc.resigned_at IS NOT NULL INTO v_id, v_rq, v_rq_uuid, v_closed, v_resigned
     FROM requirement_candidate rc
     JOIN requirement r ON r.id = rc.requirement_id AND r.tenant_id = p_tenant_id AND r.deleted_at IS NULL
     JOIN master_item s ON s.id = r.status_item_id
    WHERE rc.uuid = p_uuid AND rc.deleted_at IS NULL;
   IF v_id IS NULL THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:NOT_FOUND'; END IF;
   IF v_closed = 1 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:RQ_CLOSED'; END IF;
+  IF v_resigned = 1 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:CANDIDATE_RESIGNED'; END IF;
   UPDATE requirement_candidate SET deleted_at = NOW(3), updated_by = p_actor_id WHERE id = v_id;
   CALL sp_audit_insert(p_tenant_id, p_actor_id, NULL, 'CANDIDATE_REMOVE', 'requirement', v_rq_uuid, JSON_OBJECT('candidate', p_uuid), p_ip);
 END $$
@@ -546,7 +575,8 @@ BEGIN
   SELECT JSON_OBJECT('candidateId', rc.uuid, 'requirementId', r.uuid, 'code', r.code, 'title', r.title, 'dueDate', r.due_date,
            'client', c.label_i18n, 'profile', p.label_i18n,
            'status', JSON_OBJECT('code', s.code, 'label', s.label_i18n, 'group', s.str1),
-           'stage', JSON_OBJECT('code', cs.code, 'label', cs.label_i18n), 'addedAt', rc.created_at) AS doc
+           'stage', JSON_OBJECT('code', cs.code, 'label', cs.label_i18n), 'addedAt', rc.created_at,
+           'resignation', IF(rc.resigned_at IS NULL, NULL, JSON_OBJECT('at', rc.resigned_at, 'offboard', rc.offboard_status, 'offboardAt', rc.offboard_at))) AS doc
     FROM requirement_candidate rc
     JOIN requirement r ON r.id = rc.requirement_id AND r.deleted_at IS NULL AND r.tenant_id = p_tenant_id
     JOIN talent t ON t.id = rc.talent_id AND t.uuid = p_talent_uuid

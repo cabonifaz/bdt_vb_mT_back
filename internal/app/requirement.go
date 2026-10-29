@@ -299,22 +299,28 @@ func (s *RequirementService) SetStatus(ctx context.Context, p *domain.Principal,
 }
 
 // Reopen: reabre un RQ cerrado (RESIGNATION: renunció un talento; MORE_VACANCIES: se amplían las vacantes).
-// statusID opcional: estado abierto al que vuelve (por defecto En selección).
-func (s *RequirementService) Reopen(ctx context.Context, p *domain.Principal, ip, id, reason, notes, statusID string) (*ports.RQChange, error) {
+// Por renuncia, candidates son los confirmados que renunciaron (al menos uno). statusID opcional: estado abierto
+// al que vuelve (por defecto En selección).
+func (s *RequirementService) Reopen(ctx context.Context, p *domain.Principal, ip, id, reason, notes string, candidates []string, statusID string) (*ports.RQChange, error) {
 	tid, err := tenantOf(p)
 	if err != nil {
 		return nil, err
 	}
 	notes = strings.TrimSpace(notes)
 	if !validUUID(id) || (reason != "RESIGNATION" && reason != "MORE_VACANCIES") || utf8.RuneCountInString(notes) > 500 ||
-		(statusID != "" && !validUUID(statusID)) {
+		(statusID != "" && !validUUID(statusID)) || len(candidates) > 100 || (reason == "RESIGNATION") != (len(candidates) > 0) {
 		return nil, domain.ErrValidation
+	}
+	for _, c := range candidates {
+		if !validUUID(c) {
+			return nil, domain.ErrValidation
+		}
 	}
 	var st *string
 	if statusID != "" {
 		st = &statusID
 	}
-	c, err := s.Repo.Reopen(ctx, meta(p, ip), tid, id, reason, notes, st)
+	c, err := s.Repo.Reopen(ctx, meta(p, ip), tid, id, reason, notes, candidates, st)
 	if err == nil && c != nil && s.Notifier != nil {
 		s.Notifier.RQChanged(ctx, p, c)
 	}

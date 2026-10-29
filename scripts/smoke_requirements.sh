@@ -106,11 +106,27 @@ check "el admin no reabre" "$(req POST /api/v1/tenant/requirements/$RQ/reopen "$
 check "motivo obligatorio" "$(req POST /api/v1/tenant/requirements/$RQ/reopen "$L" "{\"reason\":\"OTRO\"}")" 422
 check "el jefe reabre" "$(req POST /api/v1/tenant/requirements/$RQ/reopen "$L" "{\"reason\":\"MORE_VACANCIES\",\"notes\":\"2 mas\"}")" 200
 check "vuelve a En selección" "$(body | js o.status)" IN_SELECTION
-check "ya abierto: no se reabre" "$(req POST /api/v1/tenant/requirements/$RQ/reopen "$L" "{\"reason\":\"RESIGNATION\"}")" 409
+check "ya abierto: no se reabre" "$(req POST /api/v1/tenant/requirements/$RQ/reopen "$L" "{\"reason\":\"MORE_VACANCIES\"}")" 409
 check "queda en el historial" "$(code -H "$V" $API/api/v1/tenant/requirements/$RQ >/dev/null; body | js "o.reopens.map(r=>r.reason+\":\"+r.notes).join()")" "MORE_VACANCIES:2 mas"
 T3=$(uuid); code -X POST -H "$A" -H "$J" -d "{\"id\":\"$T3\",\"firstName\":\"Cand\",\"lastName\":\"Tres$RANDOM$RANDOM\"}" $API/api/v1/tenant/talents >/dev/null
 check "abierto otra vez: se agregan candidatos" "$(req POST /api/v1/tenant/requirements/$RQ/candidates "$R" "{\"id\":\"$(uuid)\",\"talentId\":\"$T3\",\"vacancyId\":\"$V2\"}")" 201
+
+echo "== Renuncia de un confirmado"
+check "se cierra otra vez" "$(req PATCH /api/v1/tenant/requirements/$RQ/status "$A" "{\"statusId\":\"$CAN\"}")" 200
+check "renuncia sin indicar quién" "$(req POST /api/v1/tenant/requirements/$RQ/reopen "$L" "{\"reason\":\"RESIGNATION\"}")" 422
+check "renuncia de alguien que no es candidato confirmado" "$(req POST /api/v1/tenant/requirements/$RQ/reopen "$L" "{\"reason\":\"RESIGNATION\",\"candidates\":[\"$(uuid)\"]}")" 422
+check "más vacantes no lleva candidatos" "$(req POST /api/v1/tenant/requirements/$RQ/reopen "$L" "{\"reason\":\"MORE_VACANCIES\",\"candidates\":[\"$C1\"]}")" 422
+check "reabre por renuncia del primero" "$(req POST /api/v1/tenant/requirements/$RQ/reopen "$L" "{\"reason\":\"RESIGNATION\",\"candidates\":[\"$C1\"]}")" 200
+check "ya no cubre la vacante" "$(req POST /api/v1/tenant/requirements/board "$A" "{\"scope\":\"ALL\",\"search\":\"$CODE\"}" >/dev/null; body | js 'o.cards[0].covered')" 1
+code -H "$V" $API/api/v1/tenant/requirements/$RQ >/dev/null; RD=$(body)
+check "marcado como renuncia con baja pendiente" "$(echo "$RD" | js "o.candidates.find(c=>c.id==='$C1').resignation.offboard")" PENDING
+check "la vacante queda libre" "$(echo "$RD" | js "o.vacancies.find(v=>v.id==='$V1').covered")" 0
+check "el historial dice quién renunció" "$(echo "$RD" | js "o.reopens.find(r=>r.reason==='RESIGNATION').resigned.length")" 1
+check "no se mueve a quien renunció" "$(req PATCH /api/v1/tenant/requirements/candidates/$C1 "$R" "{\"stageId\":\"$DATA\"}")" 409
+check "ni se quita" "$(req DELETE /api/v1/tenant/requirements/candidates/$C1 "$R" '')" 409
+check "postulaciones del talento con la renuncia" "$(code -H "$R" $API/api/v1/tenant/talents/$T1/applications >/dev/null; body | js "o[0].resignation.offboard")" PENDING
 check "el jefe crea RQ" "$(req PUT /api/v1/tenant/requirements/$(uuid) "$L" "{\"clientId\":\"$CL\",\"title\":\"Del jefe\",\"statusId\":\"$REG\",\"requestDate\":\"2026-10-01\",\"dueDate\":\"2026-12-01\",\"vacancies\":[{\"id\":\"$(uuid)\",\"profileId\":\"$QA_P\",\"quantity\":1}]}")" 201
+check "el jefe no elimina RQ (solo el admin)" "$(req DELETE /api/v1/tenant/requirements/$RQ "$L" '')" 403
 
 echo "== Notificaciones de RQ"
 code -H "$R" "$API/api/v1/tenant/notifications?limit=50" >/dev/null; NR=$(body)

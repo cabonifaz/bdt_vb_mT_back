@@ -59,7 +59,7 @@ type RequirementRepository interface {
 	Get(ctx context.Context, m Meta, tenantID uint64, id string) (*RQDoc, error)
 	Save(ctx context.Context, m Meta, tenantID uint64, w RQWrite) (*RQChange, error)
 	SetStatus(ctx context.Context, m Meta, tenantID uint64, id, statusID string, order *int) (*RQChange, error)
-	Reopen(ctx context.Context, m Meta, tenantID uint64, id, reason, notes string, statusID *string) (*RQChange, error)
+	Reopen(ctx context.Context, m Meta, tenantID uint64, id, reason, notes string, candidates []string, statusID *string) (*RQChange, error)
 	Delete(ctx context.Context, m Meta, tenantID uint64, id string) error
 	CandidateAdd(ctx context.Context, m Meta, tenantID uint64, rqID, id, talentID, vacancyID string) (bool, error)
 	CandidateMove(ctx context.Context, m Meta, tenantID uint64, id, stageID string, vacancyID *string, order *int) (string, error)
