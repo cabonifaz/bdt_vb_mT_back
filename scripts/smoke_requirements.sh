@@ -62,7 +62,7 @@ echo "== Ficha y tarifas"
 code -H "$A" $API/api/v1/tenant/requirements/$RQ >/dev/null; RA=$(body)
 check "admin ve tarifa" "$(echo "$RA" | js "o.vacancies.find(v=>v.id==='$V1').rateFinal")" 60
 check "admin ve banda salarial" "$(echo "$RA" | js 'o.billing[0].baseMax')" 9000
-check "responsable = quien lo creó" "$(echo "$RA" | js 'o.ownerName')" "Smoke TENANT_ADMIN"
+check "responsable = quien lo creó" "$(echo "$RA" | js "o.owners.map(x=>x.name).join()")" "Smoke TENANT_ADMIN"
 check "skills y carreras" "$(echo "$RA" | js "o.vacancies.find(v=>v.id==='$V1').skills.length+'/'+o.vacancies.find(v=>v.id==='$V1').careers[0].career")" "1/Ingenieria de Sistemas"
 code -H "$R" $API/api/v1/tenant/requirements/$RQ >/dev/null; RR=$(body)
 check "reclutador: sin tarifa" "$(echo "$RR" | js "o.vacancies.find(v=>v.id==='$V1').rateFinal==null")" true
@@ -127,6 +127,15 @@ check "ni se quita" "$(req DELETE /api/v1/tenant/requirements/candidates/$C1 "$R
 check "postulaciones del talento con la renuncia" "$(code -H "$R" $API/api/v1/tenant/talents/$T1/applications >/dev/null; body | js "o[0].resignation.offboard")" PENDING
 check "el jefe crea RQ" "$(req PUT /api/v1/tenant/requirements/$(uuid) "$L" "{\"clientId\":\"$CL\",\"title\":\"Del jefe\",\"statusId\":\"$REG\",\"requestDate\":\"2026-10-01\",\"dueDate\":\"2026-12-01\",\"vacancies\":[{\"id\":\"$(uuid)\",\"profileId\":\"$QA_P\",\"quantity\":1}]}")" 201
 check "el jefe no elimina RQ (solo el admin)" "$(req DELETE /api/v1/tenant/requirements/$RQ "$L" '')" 403
+
+echo "== Varios responsables (historial para carga e indicadores)"
+uid_of() { code -H "$1" $API/api/v1/auth/me >/dev/null; body | jget .id; }
+RC_ID=$(uid_of "$R"); LD_ID=$(uid_of "$L"); AD_ID=$(uid_of "$A")
+check "asignar reclutador y jefe" "$(req PUT /api/v1/tenant/requirements/$RQ "$A" "$(code -H "$A" $API/api/v1/tenant/requirements/$RQ >/dev/null; body | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const o=JSON.parse(d);console.log(JSON.stringify({clientId:o.client.id,title:o.title,statusId:o.status.id,requestDate:o.requestDate,dueDate:o.dueDate,ownerIds:['$RC_ID','$LD_ID'],contacts:o.contacts.map(c=>c.id),vacancies:o.vacancies.map(v=>({id:v.id,profileId:v.profileId,quantity:v.quantity}))}))})")")" 200
+check "dos responsables" "$(code -H "$V" $API/api/v1/tenant/requirements/$RQ >/dev/null; body | js "o.owners.map(x=>x.name).sort().join()")" "Smoke RECRUITER,Smoke SELECTION_LEAD"
+check "solo míos (reclutador)" "$(req POST /api/v1/tenant/requirements/board "$R" "{\"scope\":\"ALL\",\"search\":\"$CODE\",\"mine\":true}" >/dev/null; body | js 'o.cards.length')" 1
+check "solo míos (consulta, no asignada)" "$(req POST /api/v1/tenant/requirements/board "$V" "{\"scope\":\"ALL\",\"search\":\"$CODE\",\"mine\":true}" >/dev/null; body | js 'o.cards.length')" 0
+check "un responsable de otro tenant o inexistente" "$(req PUT /api/v1/tenant/requirements/$RQ "$A" "$(code -H "$A" $API/api/v1/tenant/requirements/$RQ >/dev/null; body | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const o=JSON.parse(d);console.log(JSON.stringify({clientId:o.client.id,title:o.title,statusId:o.status.id,requestDate:o.requestDate,dueDate:o.dueDate,ownerIds:['$(uuid)'],vacancies:o.vacancies.map(v=>({id:v.id,profileId:v.profileId,quantity:v.quantity}))}))})")")" 422
 
 echo "== Notificaciones de RQ"
 code -H "$R" "$API/api/v1/tenant/notifications?limit=50" >/dev/null; NR=$(body)

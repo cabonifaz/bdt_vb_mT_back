@@ -31,20 +31,14 @@ func optJSON(j json.RawMessage) any {
 }
 
 // docs lee un result set de una columna JSON (doc) y, si hay, el nombre cifrado del responsable.
-func (r RequirementRepo) docs(rs *resultSets, withOwner bool) ([]ports.RQDoc, error) {
+func (r RequirementRepo) docs(rs *resultSets) ([]ports.RQDoc, error) {
 	out := []ports.RQDoc{}
 	err := rs.Each(func(scan func(...any) error) error {
-		var d ports.RQDoc
 		var doc []byte
-		dest := []any{&doc}
-		if withOwner {
-			dest = append(dest, &d.OwnerNameEnc)
-		}
-		if err := scan(dest...); err != nil {
+		if err := scan(&doc); err != nil {
 			return err
 		}
-		d.Doc = json.RawMessage(doc)
-		out = append(out, d)
+		out = append(out, ports.RQDoc{Doc: json.RawMessage(doc)})
 		return nil
 	})
 	return out, err
@@ -58,7 +52,7 @@ func (r RequirementRepo) rawDocs(ctx context.Context, proc string, args ...any) 
 	defer rs.Close()
 	out := []json.RawMessage{}
 	if rs.Next() {
-		docs, err := r.docs(rs, false)
+		docs, err := r.docs(rs)
 		if err != nil {
 			return nil, err
 		}
@@ -79,7 +73,7 @@ func (r RequirementRepo) Board(ctx context.Context, m ports.Meta, tenantID uint6
 	if !rs.Next() {
 		return []ports.RQDoc{}, n, nil
 	}
-	docs, err := r.docs(rs, true)
+	docs, err := r.docs(rs)
 	if err != nil {
 		return nil, n, err
 	}
@@ -100,7 +94,7 @@ func (r RequirementRepo) Get(ctx context.Context, m ports.Meta, tenantID uint64,
 	var d ports.RQDoc
 	var doc []byte
 	if rs.Next() {
-		if err := rs.One(&doc, &d.OwnerNameEnc); err != nil {
+		if err := rs.One(&doc); err != nil {
 			return nil, err
 		}
 	}
@@ -128,7 +122,7 @@ func (r RequirementRepo) change(rs *resultSets, withCreated bool) (*ports.RQChan
 func (r RequirementRepo) Save(ctx context.Context, m ports.Meta, tenantID uint64, w ports.RQWrite) (*ports.RQChange, error) {
 	rs, err := r.call(ctx, "sp_rq_save", m.ActorID, tenantID, w.ID, nullStr(w.Code), w.ClientID, w.Title, nullStr(w.Description), w.StatusID,
 		w.RequestDate, w.DueDate, optF(w.DurationValue), w.DurationUnitID, optF(w.ContractValue), w.ContractUnitID, w.WorkModalityID,
-		w.NeedsEmo, w.NeedsSctr, w.NeedsLaptop, w.OwnerID, optJSON(w.Contacts), optJSON(w.Billing), optJSON(w.Vacancies),
+		w.NeedsEmo, w.NeedsSctr, w.NeedsLaptop, optJSON(w.Owners), optJSON(w.Contacts), optJSON(w.Billing), optJSON(w.Vacancies),
 		optI(w.ExpectedVersion), nullStr(m.IP))
 	if err != nil {
 		return nil, err

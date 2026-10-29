@@ -5,19 +5,18 @@ import (
 	"encoding/json"
 )
 
-// RQDoc: documento JSON armado por el SP + nombre cifrado del responsable (lo descifra la app).
+// RQDoc: documento JSON armado por el SP; los responsables traen el nombre cifrado (owners[].nameEnc, lo descifra la app).
 type RQDoc struct {
-	Doc          json.RawMessage
-	OwnerNameEnc []byte
+	Doc json.RawMessage
 }
 
 // RQWrite: alta o edición de un RQ. Contacts, Billing y Vacancies van como JSON al SP.
 type RQWrite struct {
 	ID, Code, ClientID, Title, Description, StatusID, RequestDate, DueDate string
 	DurationValue, ContractValue                                           *float64
-	DurationUnitID, ContractUnitID, WorkModalityID, OwnerID                *string
+	DurationUnitID, ContractUnitID, WorkModalityID                         *string
 	NeedsEmo, NeedsSctr, NeedsLaptop                                       bool
-	Contacts, Billing, Vacancies                                           json.RawMessage
+	Owners, Contacts, Billing, Vacancies                                   json.RawMessage
 	ExpectedVersion                                                        *int
 }
 

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"regexp"
 	"strings"
@@ -76,7 +77,7 @@ type RQInput struct {
 	ContractValue   *float64         `json:"contractValue"`
 	ContractUnitID  *string          `json:"contractUnitId"`
 	WorkModalityID  *string          `json:"workModalityId"`
-	OwnerID         *string          `json:"ownerId"`
+	OwnerIDs        []string         `json:"ownerIds"`
 	NeedsEmo        bool             `json:"needsEmo"`
 	NeedsSctr       bool             `json:"needsSctr"`
 	NeedsLaptop     bool             `json:"needsLaptop"`
@@ -115,9 +116,14 @@ func validRQ(in *RQInput) bool {
 	if err1 != nil || err2 != nil || due.Before(req) || in.Title == "" || utf8.RuneCountInString(in.Title) > 200 ||
 		utf8.RuneCountInString(in.Description) > 2000 || (in.Code != "" && !rqCode.MatchString(in.Code)) ||
 		!validUUID(in.ClientID) || !validUUID(in.StatusID) || !optRef(in.DurationUnitID) || !optRef(in.ContractUnitID) ||
-		!optRef(in.WorkModalityID) || !optRef(in.OwnerID) || len(in.Contacts) > 30 || len(in.Billing) > 10 ||
+		!optRef(in.WorkModalityID) || len(in.OwnerIDs) > 20 || len(in.Contacts) > 30 || len(in.Billing) > 10 ||
 		len(in.Vacancies) == 0 || len(in.Vacancies) > 30 {
 		return false
+	}
+	for _, o := range in.OwnerIDs {
+		if !validUUID(o) {
+			return false
+		}
 	}
 	for _, d := range []*float64{in.DurationValue, in.ContractValue} {
 		if d != nil && (*d <= 0 || *d > 9999) {
@@ -161,22 +167,34 @@ func validRQ(in *RQInput) bool {
 	return true
 }
 
-// withOwner agrega al documento el nombre (descifrado) del responsable.
-func (s *RequirementService) withOwner(d ports.RQDoc) json.RawMessage {
-	if len(d.OwnerNameEnc) == 0 {
-		return d.Doc
-	}
-	name, err := s.Cipher.Decrypt(d.OwnerNameEnc)
-	if err != nil {
-		return d.Doc
-	}
+// withOwners reemplaza el nombre cifrado de cada responsable (owners[].nameEnc, base64) por el nombre descifrado.
+func (s *RequirementService) withOwners(d ports.RQDoc) json.RawMessage {
 	var m map[string]json.RawMessage
 	if json.Unmarshal(d.Doc, &m) != nil {
 		return d.Doc
 	}
-	m["ownerName"], _ = json.Marshal(name)
-	out, _ := json.Marshal(m)
-	return out
+	var in []struct {
+		ID      string `json:"id"`
+		NameEnc string `json:"nameEnc"`
+	}
+	if json.Unmarshal(m["owners"], &in) != nil {
+		return d.Doc
+	}
+	type owner struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+	out := make([]owner, 0, len(in))
+	for _, o := range in {
+		name := ""
+		if enc, err := base64.StdEncoding.DecodeString(o.NameEnc); err == nil {
+			name, _ = s.Cipher.Decrypt(enc)
+		}
+		out = append(out, owner{o.ID, name})
+	}
+	m["owners"], _ = json.Marshal(out)
+	doc, _ := json.Marshal(m)
+	return doc
 }
 
 // BoardFilter: lo que pide el tablero. Scope vacío = ACTIVE (abiertos sin vencer); Today = fecha local del usuario.
@@ -225,7 +243,7 @@ func (s *RequirementService) Board(ctx context.Context, p *domain.Principal, f B
 	}
 	out := &BoardResult{Cards: make([]json.RawMessage, 0, len(docs)), Counts: counts}
 	for _, d := range docs {
-		out.Cards = append(out.Cards, s.withOwner(d))
+		out.Cards = append(out.Cards, s.withOwners(d))
 	}
 	return out, nil
 }
@@ -252,7 +270,7 @@ func (s *RequirementService) Get(ctx context.Context, p *domain.Principal, id st
 	if err != nil {
 		return nil, err
 	}
-	return s.withOwner(*d), nil
+	return s.withOwners(*d), nil
 }
 
 func (s *RequirementService) Save(ctx context.Context, p *domain.Principal, ip, id string, in RQInput) (*ports.RQChange, error) {
@@ -269,11 +287,16 @@ func (s *RequirementService) Save(ctx context.Context, p *domain.Principal, ip, 
 	if in.Billing != nil {
 		billing, _ = json.Marshal(in.Billing)
 	}
+	// responsables: sin lista = sin cambios (en el alta, quien registra)
+	var owners json.RawMessage
+	if len(in.OwnerIDs) > 0 {
+		owners, _ = json.Marshal(in.OwnerIDs)
+	}
 	c, err := s.Repo.Save(ctx, meta(p, ip), tid, ports.RQWrite{
 		ID: id, Code: in.Code, ClientID: in.ClientID, Title: in.Title, Description: in.Description, StatusID: in.StatusID,
 		RequestDate: in.RequestDate, DueDate: in.DueDate, DurationValue: in.DurationValue, DurationUnitID: nilIfEmpty(in.DurationUnitID),
 		ContractValue: in.ContractValue, ContractUnitID: nilIfEmpty(in.ContractUnitID), WorkModalityID: nilIfEmpty(in.WorkModalityID),
-		OwnerID: nilIfEmpty(in.OwnerID), NeedsEmo: in.NeedsEmo, NeedsSctr: in.NeedsSctr, NeedsLaptop: in.NeedsLaptop,
+		Owners: owners, NeedsEmo: in.NeedsEmo, NeedsSctr: in.NeedsSctr, NeedsLaptop: in.NeedsLaptop,
 		Contacts: contacts, Billing: billing, Vacancies: vacancies, ExpectedVersion: in.ExpectedVersion,
 	})
 	if err == nil && c != nil && s.Notifier != nil {

@@ -1,7 +1,8 @@
 -- =====================================================================
 -- Requerimientos (RQ): tablero, ficha, alta/edición con vacantes, estados, candidatos (pipeline) y contactos.
 -- El tablero y la ficha se devuelven como documentos JSON; las tarifas y bandas salariales solo se incluyen
--- (y solo se guardan) si el actor tiene rq.rates.read. El nombre del responsable va cifrado aparte (lo descifra la app).
+-- (y solo se guardan) si el actor tiene rq.rates.read. Los responsables (owners) llevan el nombre cifrado en base64
+-- (nameEnc); la app lo descifra.
 -- =====================================================================
 DELIMITER $$
 
@@ -52,7 +53,8 @@ BEGIN
                                              WHERE rc.requirement_id = r.id AND cc.uuid = p_contact_uuid))
      AND (p_profile_uuid IS NULL OR EXISTS (SELECT 1 FROM requirement_vacancy v JOIN master_item p ON p.id = v.profile_item_id
                                              WHERE v.requirement_id = r.id AND v.deleted_at IS NULL AND p.uuid = p_profile_uuid))
-     AND (IFNULL(p_mine, 0) = 0 OR r.owner_user_id = p_actor_id OR r.created_by = p_actor_id)
+     AND (IFNULL(p_mine, 0) = 0 OR r.created_by = p_actor_id
+          OR EXISTS (SELECT 1 FROM requirement_owner ro WHERE ro.requirement_id = r.id AND ro.user_id = p_actor_id AND ro.unassigned_at IS NULL))
      AND (v_search IS NULL OR LOWER(r.code) LIKE v_search OR LOWER(r.title) LIKE v_search
           OR LOWER(JSON_UNQUOTE(JSON_EXTRACT(c.label_i18n, '$.es'))) LIKE v_search
           OR EXISTS (SELECT 1 FROM requirement_contact rc JOIN client_contact cc ON cc.id = rc.contact_id
@@ -68,7 +70,9 @@ BEGIN
            'client', JSON_OBJECT('id', c.uuid, 'label', c.label_i18n),
            'status', JSON_OBJECT('id', s.uuid, 'code', s.code, 'label', s.label_i18n, 'group', s.str1),
            'modality', IF(wm.id IS NULL, NULL, JSON_OBJECT('code', wm.code, 'label', wm.label_i18n)),
-           'ownerId', o.uuid,
+           'owners', IFNULL((SELECT JSON_ARRAYAGG(JSON_OBJECT('id', u.uuid, 'nameEnc', TO_BASE64(u.full_name_enc)))
+                         FROM requirement_owner ro JOIN app_user u ON u.id = ro.user_id
+                        WHERE ro.requirement_id = r.id AND ro.unassigned_at IS NULL), JSON_ARRAY()),
            'vacancies', (SELECT IFNULL(SUM(v.quantity), 0) FROM requirement_vacancy v WHERE v.requirement_id = r.id AND v.deleted_at IS NULL),
            'covered', (SELECT COUNT(*) FROM requirement_candidate rc JOIN master_item cs ON cs.id = rc.stage_item_id
                         WHERE rc.requirement_id = r.id AND rc.deleted_at IS NULL AND rc.resigned_at IS NULL AND cs.code = 'CONFIRMED'),
@@ -78,14 +82,12 @@ BEGIN
                                        WHERE rc.vacancy_id = v.id AND rc.deleted_at IS NULL AND rc.resigned_at IS NULL AND cs.code = 'CONFIRMED')))
                           FROM requirement_vacancy v JOIN master_item p ON p.id = v.profile_item_id
                          WHERE v.requirement_id = r.id AND v.deleted_at IS NULL)
-         ) AS doc,
-         o.full_name_enc AS owner_name_enc
+         ) AS doc
     FROM tmp_rq_board f
     JOIN requirement r ON r.id = f.id
     JOIN master_item s ON s.id = r.status_item_id
     JOIN master_item c ON c.id = r.client_item_id
     LEFT JOIN master_item wm ON wm.id = r.work_modality_item_id
-    LEFT JOIN app_user o ON o.id = r.owner_user_id
    WHERE CASE p_scope
            WHEN 'ALL'     THEN 1
            WHEN 'CLOSED'  THEN f.is_open = 0
@@ -126,7 +128,9 @@ BEGIN
            'durationValue', r.duration_value, 'durationUnitId', du.uuid,
            'contractValue', r.contract_value, 'contractUnitId', cu.uuid,
            'workModalityId', wm.uuid, 'needsEmo', r.needs_emo = 1, 'needsSctr', r.needs_sctr = 1, 'needsLaptop', r.needs_laptop = 1,
-           'ownerId', o.uuid,
+           'owners', IFNULL((SELECT JSON_ARRAYAGG(JSON_OBJECT('id', u.uuid, 'nameEnc', TO_BASE64(u.full_name_enc)))
+                         FROM requirement_owner ro JOIN app_user u ON u.id = ro.user_id
+                        WHERE ro.requirement_id = r.id AND ro.unassigned_at IS NULL), JSON_ARRAY()),
            'contacts', IFNULL((SELECT JSON_ARRAYAGG(JSON_OBJECT('id', cc.uuid, 'firstName', cc.first_name, 'lastName', cc.last_name,
                           'secondLastName', cc.second_last_name, 'position', cc.position, 'email', cc.email, 'phone', cc.phone))
                         FROM requirement_contact x JOIN client_contact cc ON cc.id = x.contact_id
@@ -169,15 +173,13 @@ BEGIN
                                         WHERE rc.resign_reopen_id = ro.id)))
                         FROM requirement_reopen ro JOIN master_item fs ON fs.id = ro.from_status_id JOIN master_item ts ON ts.id = ro.to_status_id
                        WHERE ro.requirement_id = r.id), JSON_ARRAY())
-         ) AS doc,
-         o.full_name_enc AS owner_name_enc
+         ) AS doc
     FROM requirement r
     JOIN master_item s ON s.id = r.status_item_id
     JOIN master_item c ON c.id = r.client_item_id
     LEFT JOIN master_item du ON du.id = r.duration_unit_item_id
     LEFT JOIN master_item cu ON cu.id = r.contract_unit_item_id
     LEFT JOIN master_item wm ON wm.id = r.work_modality_item_id
-    LEFT JOIN app_user o ON o.id = r.owner_user_id
    WHERE r.id = v_id;
 END $$
 
@@ -189,10 +191,11 @@ CREATE PROCEDURE sp_rq_save(IN p_actor_id BIGINT UNSIGNED, IN p_tenant_id BIGINT
   IN p_client_uuid CHAR(36), IN p_title VARCHAR(200), IN p_description VARCHAR(2000), IN p_status_uuid CHAR(36),
   IN p_request_date DATE, IN p_due_date DATE, IN p_duration_value DECIMAL(8,2), IN p_duration_unit_uuid CHAR(36),
   IN p_contract_value DECIMAL(8,2), IN p_contract_unit_uuid CHAR(36), IN p_work_modality_uuid CHAR(36),
-  IN p_emo TINYINT(1), IN p_sctr TINYINT(1), IN p_laptop TINYINT(1), IN p_owner_uuid CHAR(36),
+  IN p_emo TINYINT(1), IN p_sctr TINYINT(1), IN p_laptop TINYINT(1), IN p_owners JSON,
   IN p_contacts JSON, IN p_billing JSON, IN p_vacancies JSON, IN p_expected_version INT, IN p_ip VARCHAR(45))
 BEGIN
-  DECLARE v_id, v_client, v_status, v_du, v_cu, v_wm, v_owner BIGINT UNSIGNED;
+  DECLARE v_id, v_client, v_status, v_du, v_cu, v_wm BIGINT UNSIGNED;
+  DECLARE v_owner_count, v_owner_valid INT;
   DECLARE v_version INT;
   DECLARE v_created TINYINT(1) DEFAULT 0;
   DECLARE v_rates TINYINT(1);
@@ -215,9 +218,13 @@ BEGIN
   CALL sp_master_resolve(p_tenant_id, 'TIME_UNIT', p_contract_unit_uuid, v_cu);
   CALL sp_master_resolve(p_tenant_id, 'WORK_MODALITY', p_work_modality_uuid, v_wm);
   IF v_client IS NULL OR v_status IS NULL THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:VALIDATION'; END IF;
-  IF p_owner_uuid IS NOT NULL THEN
-    SELECT id INTO v_owner FROM app_user WHERE uuid = p_owner_uuid AND tenant_id = p_tenant_id AND deleted_at IS NULL;
-    IF v_owner IS NULL THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:VALIDATION'; END IF;
+  -- responsables: usuarios activos del tenant, al menos uno si se envía la lista
+  IF p_owners IS NOT NULL THEN
+    SET v_owner_count = JSON_LENGTH(p_owners);
+    SELECT COUNT(DISTINCT u.id) INTO v_owner_valid
+      FROM JSON_TABLE(p_owners, '$[*]' COLUMNS (uid CHAR(36) PATH '$')) j
+      JOIN app_user u ON u.uuid = j.uid AND u.tenant_id = p_tenant_id AND u.status = 'ACTIVE' AND u.deleted_at IS NULL;
+    IF v_owner_count = 0 OR v_owner_valid <> v_owner_count THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:VALIDATION'; END IF;
   END IF;
   SELECT code INTO v_new_status FROM master_item WHERE id = v_status;
 
@@ -252,19 +259,34 @@ BEGIN
     SET v_created = 1;
     INSERT INTO requirement (uuid, tenant_id, code, client_item_id, title, description, status_item_id, request_date, due_date,
       duration_value, duration_unit_item_id, contract_value, contract_unit_item_id, work_modality_item_id,
-      needs_emo, needs_sctr, needs_laptop, owner_user_id, created_by)
+      needs_emo, needs_sctr, needs_laptop, created_by)
     VALUES (p_uuid, p_tenant_id, v_code, v_client, TRIM(p_title), NULLIF(TRIM(p_description), ''), v_status, p_request_date, p_due_date,
-      p_duration_value, v_du, p_contract_value, v_cu, v_wm, IFNULL(p_emo, 0), IFNULL(p_sctr, 0), IFNULL(p_laptop, 0),
-      IFNULL(v_owner, p_actor_id), p_actor_id);
+      p_duration_value, v_du, p_contract_value, v_cu, v_wm, IFNULL(p_emo, 0), IFNULL(p_sctr, 0), IFNULL(p_laptop, 0), p_actor_id);
     SET v_id = LAST_INSERT_ID(), v_version = 1;
+    IF p_owners IS NULL THEN
+      INSERT INTO requirement_owner (requirement_id, user_id, assigned_by) VALUES (v_id, p_actor_id, p_actor_id);
+    END IF;
   ELSE
     UPDATE requirement SET code = IFNULL(v_code, code), client_item_id = v_client, title = TRIM(p_title),
            description = NULLIF(TRIM(p_description), ''), status_item_id = v_status, request_date = p_request_date, due_date = p_due_date,
            duration_value = p_duration_value, duration_unit_item_id = v_du, contract_value = p_contract_value, contract_unit_item_id = v_cu,
            work_modality_item_id = v_wm, needs_emo = IFNULL(p_emo, 0), needs_sctr = IFNULL(p_sctr, 0), needs_laptop = IFNULL(p_laptop, 0),
-           owner_user_id = IFNULL(v_owner, owner_user_id), version = version + 1, updated_by = p_actor_id
+           version = version + 1, updated_by = p_actor_id
      WHERE id = v_id;
     SET v_version = v_version + 1;
+  END IF;
+
+  -- responsables: se cierra la asignación de quien sale y se abre la de quien entra (historial para indicadores)
+  IF p_owners IS NOT NULL THEN
+    UPDATE requirement_owner ro JOIN app_user u ON u.id = ro.user_id
+       SET ro.unassigned_at = NOW(3), ro.unassigned_by = p_actor_id
+     WHERE ro.requirement_id = v_id AND ro.unassigned_at IS NULL
+       AND NOT JSON_CONTAINS(p_owners, JSON_QUOTE(u.uuid));
+    INSERT INTO requirement_owner (requirement_id, user_id, assigned_by)
+    SELECT DISTINCT v_id, u.id, p_actor_id
+      FROM JSON_TABLE(p_owners, '$[*]' COLUMNS (uid CHAR(36) PATH '$')) j
+      JOIN app_user u ON u.uuid = j.uid AND u.tenant_id = p_tenant_id
+     WHERE NOT EXISTS (SELECT 1 FROM requirement_owner ro WHERE ro.requirement_id = v_id AND ro.user_id = u.id AND ro.unassigned_at IS NULL);
   END IF;
 
   -- contactos: solo del mismo cliente

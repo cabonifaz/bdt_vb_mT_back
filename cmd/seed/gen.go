@@ -559,7 +559,7 @@ func (e *env) genRQs(ctx context.Context, spec TenantSpec, n int, d rqDeps) {
 			RequestDate: req.Format("2006-01-02"), DueDate: due.Format("2006-01-02"),
 			ContractValue: ptr(float64(e.between(3, 12))), ContractUnitID: ptr(m.id("TIME_UNIT", "MONTHS")),
 			WorkModalityID: ptr(m.id("WORK_MODALITY", pick(e, []string{"ON_SITE", "ON_SITE", "HYBRID", "REMOTE"}))),
-			OwnerID:        ptr(owner.p.UserUUID), NeedsEmo: e.chance(0.5), NeedsSctr: e.chance(0.6), NeedsLaptop: e.chance(0.3),
+			OwnerIDs:       e.owners(owner, analysts), NeedsEmo: e.chance(0.5), NeedsSctr: e.chance(0.6), NeedsLaptop: e.chance(0.3),
 			Contacts: firstN(contacts[client], 2), Vacancies: vacs}
 		if e.chance(0.7) {
 			in.Billing = []app.RQBillingInput{{ContractID: m.id("CONTRACT_MODALITY", "PAYROLL_FULL"), CurrencyID: m.id("CURRENCY", "PEN"),
@@ -777,4 +777,15 @@ func (e *env) addLead(ctx context.Context, spec TenantSpec) (string, error) {
 	}
 	fmt.Printf("%-18s %s creado\n", spec.Slug, email)
 	return fmt.Sprintf("%s_JEFE1=%s %s   # %s (jefe de selección)", strings.ToUpper(codeOf(spec.Slug)), email, pwd, name), nil
+}
+
+// owners: el analista a cargo y, en un tercio de los RQ, un segundo analista del equipo.
+func (e *env) owners(lead user, analysts []user) []string {
+	out := []string{lead.p.UserUUID}
+	if len(analysts) > 1 && e.chance(0.33) {
+		if o := analysts[e.intn(len(analysts))]; o.p.UserUUID != lead.p.UserUUID {
+			out = append(out, o.p.UserUUID)
+		}
+	}
+	return out
 }
