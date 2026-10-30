@@ -241,8 +241,13 @@ func culVerdict(dc *ports.DocContext, code, docNum string, chk *ports.CULCheck, 
 	return v
 }
 
-// decryptNames reemplaza los campos "<x>NameEnc" (nombre cifrado en base64) por "<x>Name" descifrado, a cualquier profundidad.
 func (s *DocumentService) decryptNames(doc json.RawMessage) json.RawMessage {
+	return decryptNames(s.Cipher, doc)
+}
+
+// decryptNames reemplaza los campos "<x>NameEnc" (nombre cifrado en base64) por "<x>Name" descifrado, a cualquier profundidad.
+// ("nameEnc" a secas queda como "name").
+func decryptNames(c ports.Cipher, doc json.RawMessage) json.RawMessage {
 	var v any
 	if json.Unmarshal(doc, &v) != nil {
 		return doc
@@ -252,10 +257,10 @@ func (s *DocumentService) decryptNames(doc json.RawMessage) json.RawMessage {
 		switch t := x.(type) {
 		case map[string]any:
 			for k, val := range t {
-				if enc, ok := val.(string); ok && strings.HasSuffix(k, "NameEnc") {
+				if enc, ok := val.(string); ok && (strings.HasSuffix(k, "NameEnc") || k == "nameEnc") {
 					name := ""
 					if b, err := base64.StdEncoding.DecodeString(enc); err == nil {
-						name, _ = s.Cipher.Decrypt(b)
+						name, _ = c.Decrypt(b)
 					}
 					delete(t, k)
 					t[strings.TrimSuffix(k, "Enc")] = name

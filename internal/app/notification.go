@@ -19,6 +19,14 @@ import (
 // notifyGroupMinutes: cambios seguidos del mismo usuario sobre el mismo talento se agrupan en una notificación.
 const notifyGroupMinutes = 15
 
+// inboxScope: tenant del usuario, o 0 para el Super Admin (su bandeja tiene las notificaciones de plataforma).
+func inboxScope(p *domain.Principal) (uint64, error) {
+	if p != nil && p.IsPlatform() {
+		return 0, nil
+	}
+	return tenantOf(p)
+}
+
 // NotificationService: centro de notificaciones del usuario y push del sistema operativo (app instalada).
 type NotificationService struct {
 	Repo   ports.NotificationRepository
@@ -27,7 +35,7 @@ type NotificationService struct {
 }
 
 func (s *NotificationService) Inbox(ctx context.Context, p *domain.Principal, unreadOnly bool, before string, limit int) (*domain.NotificationInbox, error) {
-	tid, err := tenantOf(p)
+	tid, err := inboxScope(p)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +68,7 @@ func (s *NotificationService) Inbox(ctx context.Context, p *domain.Principal, un
 
 // MarkRead marca una notificación (id) o todas (id vacío).
 func (s *NotificationService) MarkRead(ctx context.Context, p *domain.Principal, id string) error {
-	tid, err := tenantOf(p)
+	tid, err := inboxScope(p)
 	if err != nil {
 		return err
 	}
@@ -107,7 +115,7 @@ func validEndpoint(e string) bool {
 }
 
 func (s *NotificationService) Subscribe(ctx context.Context, p *domain.Principal, sub PushSubscription, userAgent string) (int, error) {
-	tid, err := tenantOf(p)
+	tid, err := inboxScope(p)
 	if err != nil {
 		return 0, err
 	}
@@ -121,7 +129,7 @@ func (s *NotificationService) Subscribe(ctx context.Context, p *domain.Principal
 }
 
 func (s *NotificationService) Unsubscribe(ctx context.Context, p *domain.Principal, endpoint string) error {
-	tid, err := tenantOf(p)
+	tid, err := inboxScope(p)
 	if err != nil {
 		return err
 	}
@@ -133,7 +141,7 @@ func (s *NotificationService) Unsubscribe(ctx context.Context, p *domain.Princip
 
 // Prefs: configuración de cada tipo (sin fila = todo activo) y cantidad de dispositivos con push.
 func (s *NotificationService) Prefs(ctx context.Context, p *domain.Principal) (*domain.NotificationPrefs, error) {
-	tid, err := tenantOf(p)
+	tid, err := inboxScope(p)
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +163,7 @@ func (s *NotificationService) Prefs(ctx context.Context, p *domain.Principal) (*
 }
 
 func (s *NotificationService) SetPref(ctx context.Context, p *domain.Principal, pref domain.NotificationPref) error {
-	tid, err := tenantOf(p)
+	tid, err := inboxScope(p)
 	if err != nil {
 		return err
 	}

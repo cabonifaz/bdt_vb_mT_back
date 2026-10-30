@@ -3,11 +3,12 @@
 -- =====================================================================
 DELIMITER $$
 
--- El actor debe ser un usuario activo del tenant (las notificaciones son personales, no requieren permiso extra)
+-- El actor debe ser un usuario activo del tenant (las notificaciones son personales, no requieren permiso extra).
+-- p_tenant_id 0 = usuario de plataforma (Super Admin).
 DROP PROCEDURE IF EXISTS sp_assert_member $$
 CREATE PROCEDURE sp_assert_member(IN p_actor_id BIGINT UNSIGNED, IN p_tenant_id BIGINT UNSIGNED)
 BEGIN
-  IF p_actor_id IS NULL OR NOT EXISTS (SELECT 1 FROM app_user WHERE id = p_actor_id AND tenant_id = p_tenant_id
+  IF p_actor_id IS NULL OR NOT EXISTS (SELECT 1 FROM app_user WHERE id = p_actor_id AND tenant_id <=> NULLIF(p_tenant_id, 0)
                                          AND status = 'ACTIVE' AND deleted_at IS NULL) THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:FORBIDDEN';
   END IF;
@@ -62,6 +63,38 @@ BEGIN
   END IF;
 END $$
 
+-- Notificación a una audiencia, sin agrupar:
+--   SUPER_ADMINS = usuarios con platform.support.manage; USER = p_user_id; ALL = todos los usuarios activos.
+-- p_tenant_id NULL = notificación de plataforma. Mismas salidas que sp_notify_entity.
+DROP PROCEDURE IF EXISTS sp_notify_users $$
+CREATE PROCEDURE sp_notify_users(IN p_actor_id BIGINT UNSIGNED, IN p_tenant_id BIGINT UNSIGNED, IN p_uuid CHAR(36),
+  IN p_type VARCHAR(40), IN p_entity_type VARCHAR(30), IN p_entity_uuid CHAR(36), IN p_payload JSON,
+  IN p_audience VARCHAR(15), IN p_user_id BIGINT UNSIGNED)
+BEGIN
+  DECLARE v_id BIGINT UNSIGNED;
+  INSERT INTO notification (uuid, tenant_id, type, entity_type, entity_uuid, actor_user_id, payload)
+  VALUES (p_uuid, NULLIF(p_tenant_id, 0), p_type, p_entity_type, p_entity_uuid, p_actor_id, p_payload);
+  SET v_id = LAST_INSERT_ID();
+  INSERT INTO notification_recipient (notification_id, user_id)
+  SELECT DISTINCT v_id, u.id
+    FROM app_user u
+   WHERE u.status = 'ACTIVE' AND u.deleted_at IS NULL AND u.id <> IFNULL(p_actor_id, 0)
+     AND CASE p_audience
+           WHEN 'USER' THEN u.id = p_user_id
+           WHEN 'SUPER_ADMINS' THEN EXISTS (SELECT 1 FROM v_user_permission vp WHERE vp.user_id = u.id AND vp.code = 'platform.support.manage')
+           WHEN 'ALL' THEN 1
+           ELSE 0
+         END
+     AND NOT EXISTS (SELECT 1 FROM notification_pref np WHERE np.user_id = u.id AND np.type = p_type AND np.in_app = 0);
+  SELECT p_uuid AS uuid, 1 AS is_new, (SELECT full_name_enc FROM app_user WHERE id = p_actor_id) AS actor_name_enc;
+  SELECT s.endpoint_hash, s.endpoint, s.p256dh, s.auth, u.locale
+    FROM notification_recipient r
+    JOIN app_user u ON u.id = r.user_id
+    JOIN push_subscription s ON s.user_id = r.user_id
+   WHERE r.notification_id = v_id
+     AND NOT EXISTS (SELECT 1 FROM notification_pref np WHERE np.user_id = r.user_id AND np.type = p_type AND np.push = 0);
+END $$
+
 -- Bandeja del usuario: (1) no leídas; (2) notificaciones (más recientes primero; p_before para paginar)
 DROP PROCEDURE IF EXISTS sp_notification_list $$
 CREATE PROCEDURE sp_notification_list(IN p_actor_id BIGINT UNSIGNED, IN p_tenant_id BIGINT UNSIGNED,
@@ -70,13 +103,13 @@ BEGIN
   DECLARE v_limit INT DEFAULT LEAST(GREATEST(IFNULL(p_limit, 20), 1), 100);
   CALL sp_assert_member(p_actor_id, p_tenant_id);
   SELECT COUNT(*) AS unread FROM notification_recipient r JOIN notification n ON n.id = r.notification_id
-   WHERE r.user_id = p_actor_id AND r.read_at IS NULL AND n.tenant_id = p_tenant_id;
+   WHERE r.user_id = p_actor_id AND r.read_at IS NULL;
   SELECT n.uuid, n.type, n.entity_type, n.entity_uuid, n.payload, n.event_count, n.created_at, r.delivered_at, r.read_at,
          a.uuid AS actor_uuid, a.full_name_enc AS actor_name_enc
     FROM notification_recipient r
     JOIN notification n ON n.id = r.notification_id
     LEFT JOIN app_user a ON a.id = n.actor_user_id
-   WHERE r.user_id = p_actor_id AND n.tenant_id = p_tenant_id
+   WHERE r.user_id = p_actor_id
      AND (IFNULL(p_unread_only, 0) = 0 OR r.read_at IS NULL)
      AND (p_before IS NULL OR r.delivered_at < p_before)
    ORDER BY r.delivered_at DESC
@@ -90,7 +123,7 @@ BEGIN
   CALL sp_assert_member(p_actor_id, p_tenant_id);
   UPDATE notification_recipient r JOIN notification n ON n.id = r.notification_id
      SET r.read_at = NOW(3)
-   WHERE r.user_id = p_actor_id AND n.tenant_id = p_tenant_id AND r.read_at IS NULL AND (p_uuid IS NULL OR n.uuid = p_uuid);
+   WHERE r.user_id = p_actor_id AND r.read_at IS NULL AND (p_uuid IS NULL OR n.uuid = p_uuid);
 END $$
 
 -- Suscripción push del dispositivo (si el endpoint ya existía, pasa al usuario actual)
@@ -100,8 +133,8 @@ CREATE PROCEDURE sp_push_subscribe(IN p_actor_id BIGINT UNSIGNED, IN p_tenant_id
 BEGIN
   CALL sp_assert_member(p_actor_id, p_tenant_id);
   INSERT INTO push_subscription (user_id, tenant_id, endpoint_hash, endpoint, p256dh, auth, user_agent)
-  VALUES (p_actor_id, p_tenant_id, p_hash, p_endpoint, p_p256dh, p_auth, p_ua)
-  ON DUPLICATE KEY UPDATE user_id = p_actor_id, tenant_id = p_tenant_id, endpoint = p_endpoint, p256dh = p_p256dh,
+  VALUES (p_actor_id, NULLIF(p_tenant_id, 0), p_hash, p_endpoint, p_p256dh, p_auth, p_ua)
+  ON DUPLICATE KEY UPDATE user_id = p_actor_id, tenant_id = NULLIF(p_tenant_id, 0), endpoint = p_endpoint, p256dh = p_p256dh,
     auth = p_auth, user_agent = p_ua, failures = 0;
   SELECT COUNT(*) AS devices FROM push_subscription WHERE user_id = p_actor_id;
 END $$

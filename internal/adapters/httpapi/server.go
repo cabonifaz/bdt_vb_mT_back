@@ -36,6 +36,7 @@ type Deps struct {
 	Notifications *app.NotificationService
 	Requirements  *app.RequirementService
 	Documents     *app.DocumentService
+	Support       *app.SupportService
 	Sync          ports.SyncRepository
 	Audit         ports.AuditRepository
 	Translations  ports.TranslationRepository
@@ -88,6 +89,7 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/auth/me", s.me)
 			r.Get("/masters/tables", s.masterTables)
 			r.Get("/masters/items", s.masterItems)
+			r.Group(s.supportRoutes)
 
 			// Administración del tenant (usuario de un tenant)
 			r.Route("/tenant", func(r chi.Router) {
@@ -130,6 +132,7 @@ func (s *Server) Handler() http.Handler {
 				r.With(s.requirePerm("platform.masters.manage")).Put("/masters/items", s.upsertMasterItem)
 				r.With(s.requirePerm("platform.audit.read")).Get("/audit", s.listAudit)
 				r.With(s.requirePerm("platform.usage.read")).Get("/usage", s.usageReport)
+				r.Group(s.notificationRoutes)
 			})
 		})
 	})

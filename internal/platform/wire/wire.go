@@ -78,6 +78,7 @@ func Build(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, erro
 		Notifications: notifications,
 		Requirements:  &app.RequirementService{Repo: mysql.RequirementRepo{Store: store}, Cipher: cipher, Notifier: notifications},
 		// CUL: se verifica en el servicio público del MTPE con el RUC del tenant
+		Support:    &app.SupportService{Repo: mysql.SupportRepo{Store: store}, Cipher: cipher, Storage: files, Notifier: notifications},
 		Documents:  &app.DocumentService{Repo: mysql.DocumentRepo{Store: store}, Cipher: cipher, Files: talents, CUL: cul.New()},
 		Sync:       mysql.SyncRepo{Store: store},
 		Blacklist:  &app.BlacklistService{Repo: mysql.BlacklistRepo{Store: store}, Cipher: cipher},

@@ -44,6 +44,8 @@ type NotificationRepository interface {
 	PushResult(ctx context.Context, hash string, ok, gone bool) error
 	Prefs(ctx context.Context, m Meta, tenantID uint64) ([]domain.NotificationPref, int, error)
 	SetPref(ctx context.Context, m Meta, tenantID uint64, p domain.NotificationPref) error
+	// NotifyUsers: sin agrupar, a una audiencia (AudienceSuperAdmins, AudienceUser con userID, AudienceAll); tenantID 0 = de plataforma
+	NotifyUsers(ctx context.Context, m Meta, tenantID uint64, in NotifyInput, audience string, userID uint64) (*NotifyResult, error)
 }
 
 // PushSender envía notificaciones push del sistema operativo (Web Push con VAPID).
