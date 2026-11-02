@@ -8,19 +8,20 @@ import (
 
 // Tipos de notificación: alta/actualización de talentos y de requerimientos (RQ).
 const (
-	NotifTalentCreated  = "TALENT_CREATED"
-	NotifTalentUpdated  = "TALENT_UPDATED"
-	NotifRQCreated      = "RQ_CREATED"
-	NotifRQUpdated      = "RQ_UPDATED"
-	NotifSupportNew     = "SUPPORT_NEW"     // al Super Admin: nueva solicitud
-	NotifSupportReply   = "SUPPORT_REPLY"   // respuesta en una solicitud (al autor o al Super Admin)
-	NotifReleaseNote    = "RELEASE_NOTE"    // novedad de la plataforma, a todos
-	NotifFeatureNew     = "FEATURE_NEW"     // al Super Admin: funcionalidad nueva por activar
-	NotifFeatureEnabled = "FEATURE_ENABLED" // a los usuarios impactados: se activó una funcionalidad en su empresa
+	NotifTalentCreated    = "TALENT_CREATED"
+	NotifTalentUpdated    = "TALENT_UPDATED"
+	NotifRQCreated        = "RQ_CREATED"
+	NotifRQUpdated        = "RQ_UPDATED"
+	NotifSupportNew       = "SUPPORT_NEW"       // al Super Admin: nueva solicitud
+	NotifSupportReply     = "SUPPORT_REPLY"     // respuesta en una solicitud (al autor o al Super Admin)
+	NotifReleaseNote      = "RELEASE_NOTE"      // novedad de la plataforma, a todos
+	NotifFeatureNew       = "FEATURE_NEW"       // al Super Admin: funcionalidad nueva por activar
+	NotifFeatureEnabled   = "FEATURE_ENABLED"   // a los usuarios impactados: se activó una funcionalidad en su empresa
+	NotifVersionPublished = "VERSION_PUBLISHED" // a todos: se publicó una versión nueva en el ambiente
 )
 
 // NotificationTypes: tipos que el usuario puede configurar (en la app y push).
-var NotificationTypes = []string{NotifTalentCreated, NotifTalentUpdated, NotifRQCreated, NotifRQUpdated, NotifSupportNew, NotifSupportReply, NotifReleaseNote, NotifFeatureNew, NotifFeatureEnabled}
+var NotificationTypes = []string{NotifTalentCreated, NotifTalentUpdated, NotifRQCreated, NotifRQUpdated, NotifSupportNew, NotifSupportReply, NotifReleaseNote, NotifFeatureNew, NotifFeatureEnabled, NotifVersionPublished}
 
 func ValidNotificationType(t string) bool { return slices.Contains(NotificationTypes, t) }
 

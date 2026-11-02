@@ -18,6 +18,7 @@ import (
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/adapters/storage"
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/app"
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/platform/config"
+	"github.com/cabonifaz/bdt_vb_mT_back/internal/platform/release"
 )
 
 type App struct {
@@ -67,6 +68,10 @@ func Build(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, erro
 	// catálogo de funcionalidades: habilita los módulos por tenant y avisa de las nuevas al Super Admin
 	features := &app.FeatureService{Repo: mysql.FeatureRepo{Store: store}, Notifier: notifications}
 	go features.AnnounceNew(context.Background())
+	// versión del despliegue: se registra en el ambiente y, si es nueva, se avisa a todos
+	versions := &app.VersionService{Repo: mysql.VersionRepo{Store: store}, Notifier: notifications, Env: cfg.Env,
+		Version: release.Version(), Commit: cfg.CommitSHA, Notes: release.Notes(release.Version()), Peers: app.ParsePeers(cfg.EnvURLs)}
+	go versions.Register(context.Background())
 	talents := &app.TalentService{Repo: mysql.TalentRepo{Store: store}, Cipher: cipher, Storage: files,
 		Translator: openAI, Reader: openAI, Usage: usageRepo, Notifier: notifications}
 	srv := httpapi.NewServer(httpapi.Config{CORSOrigins: cfg.CORSOrigins, TrustProxy: cfg.TrustProxy,
@@ -82,6 +87,7 @@ func Build(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, erro
 		Requirements:  &app.RequirementService{Repo: mysql.RequirementRepo{Store: store}, Cipher: cipher, Notifier: notifications},
 		// CUL: se verifica en el servicio público del MTPE con el RUC del tenant
 		Features:   features,
+		Versions:   versions,
 		Support:    &app.SupportService{Repo: mysql.SupportRepo{Store: store}, Cipher: cipher, Storage: files, Notifier: notifications},
 		Documents:  &app.DocumentService{Repo: mysql.DocumentRepo{Store: store}, Cipher: cipher, Files: talents, CUL: cul.New(), Features: features},
 		Sync:       mysql.SyncRepo{Store: store},

@@ -37,6 +37,7 @@ type Deps struct {
 	Requirements  *app.RequirementService
 	Documents     *app.DocumentService
 	Features      *app.FeatureService
+	Versions      *app.VersionService
 	Support       *app.SupportService
 	Sync          ports.SyncRepository
 	Audit         ports.AuditRepository
@@ -72,6 +73,7 @@ func (s *Server) Handler() http.Handler {
 
 		// ---- Público ----
 		r.Get("/public/tenants/{slug}", s.publicTenant)
+		r.Get("/version", s.versionCurrent)
 		r.Get("/public/tenants/{slug}/translations/{locale}", s.publicTranslations)
 		r.Get("/public/files/{id}", s.publicFile)
 
@@ -91,6 +93,7 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/masters/tables", s.masterTables)
 			r.Get("/masters/items", s.masterItems)
 			r.Group(s.supportRoutes)
+			r.Get("/versions", s.versionList)
 
 			// Administración del tenant (usuario de un tenant)
 			r.Route("/tenant", func(r chi.Router) {
@@ -135,6 +138,8 @@ func (s *Server) Handler() http.Handler {
 				r.With(s.requirePerm("platform.usage.read")).Get("/usage", s.usageReport)
 				r.Group(s.notificationRoutes)
 				r.Group(s.featureRoutes)
+				r.Get("/versions/environments", s.versionEnvironments)
+				r.With(s.requirePerm("platform.releases.manage")).Patch("/versions/{version}", s.versionStatus)
 			})
 		})
 	})

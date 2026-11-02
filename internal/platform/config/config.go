@@ -38,6 +38,10 @@ type Config struct {
 
 	// Traducción del CV (mismo proveedor que el sistema heredado)
 	OpenAIKey, OpenAIModel string
+	// EnvURLs: API de cada ambiente para comparar versiones ("staging=https://...,preprod=https://...,production=https://...")
+	EnvURLs string
+	// CommitSHA: commit desplegado (Railway lo entrega en RAILWAY_GIT_COMMIT_SHA)
+	CommitSHA string
 
 	// Push del sistema operativo (Web Push): claves VAPID generadas con go run ./cmd/vapid; sin claves queda apagado
 	VAPIDPublic, VAPIDPrivate, VAPIDSubject string
@@ -70,6 +74,8 @@ func Load() (Config, error) {
 		DNIProvider:       get("DNI_API_PROVIDER", "decolecta"),
 		DNIToken:          os.Getenv("DNI_API_TOKEN"),
 		DNIURL:            os.Getenv("DNI_API_URL"),
+		EnvURLs:           os.Getenv("ENV_URLS"),
+		CommitSHA:         os.Getenv("RAILWAY_GIT_COMMIT_SHA"),
 		OpenAIKey:         os.Getenv("OPENAI_API_KEY"),
 		VAPIDPublic:       os.Getenv("VAPID_PUBLIC_KEY"),
 		VAPIDPrivate:      os.Getenv("VAPID_PRIVATE_KEY"),
