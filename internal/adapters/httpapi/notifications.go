@@ -17,7 +17,7 @@ func (s *Server) notificationRoutes(r chi.Router) {
 	r.Get("/notifications/prefs", s.notificationPrefs)
 	r.Put("/notifications/prefs", s.setNotificationPref)
 	r.Get("/notifications/push/key", s.pushKey)
-	r.Post("/notifications/push/subscribe", s.pushSubscribe)
+	r.With(s.requireFeature("push")).Post("/notifications/push/subscribe", s.pushSubscribe)
 	r.Post("/notifications/push/unsubscribe", s.pushUnsubscribe)
 }
 

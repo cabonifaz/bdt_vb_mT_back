@@ -64,6 +64,9 @@ func Build(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, erro
 	notifications := &app.NotificationService{Repo: mysql.NotificationRepo{Store: store}, Cipher: cipher,
 		Push: push.New(cfg.VAPIDPublic, cfg.VAPIDPrivate, cfg.VAPIDSubject)}
 	openAI := ai.NewOpenAI(cfg.OpenAIKey, cfg.OpenAIModel)
+	// catálogo de funcionalidades: habilita los módulos por tenant y avisa de las nuevas al Super Admin
+	features := &app.FeatureService{Repo: mysql.FeatureRepo{Store: store}, Notifier: notifications}
+	go features.AnnounceNew(context.Background())
 	talents := &app.TalentService{Repo: mysql.TalentRepo{Store: store}, Cipher: cipher, Storage: files,
 		Translator: openAI, Reader: openAI, Usage: usageRepo, Notifier: notifications}
 	srv := httpapi.NewServer(httpapi.Config{CORSOrigins: cfg.CORSOrigins, TrustProxy: cfg.TrustProxy,
@@ -78,8 +81,9 @@ func Build(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, erro
 		Notifications: notifications,
 		Requirements:  &app.RequirementService{Repo: mysql.RequirementRepo{Store: store}, Cipher: cipher, Notifier: notifications},
 		// CUL: se verifica en el servicio público del MTPE con el RUC del tenant
+		Features:   features,
 		Support:    &app.SupportService{Repo: mysql.SupportRepo{Store: store}, Cipher: cipher, Storage: files, Notifier: notifications},
-		Documents:  &app.DocumentService{Repo: mysql.DocumentRepo{Store: store}, Cipher: cipher, Files: talents, CUL: cul.New()},
+		Documents:  &app.DocumentService{Repo: mysql.DocumentRepo{Store: store}, Cipher: cipher, Files: talents, CUL: cul.New(), Features: features},
 		Sync:       mysql.SyncRepo{Store: store},
 		Blacklist:  &app.BlacklistService{Repo: mysql.BlacklistRepo{Store: store}, Cipher: cipher},
 		Interviews: &app.InterviewService{Repo: mysql.InterviewRepo{Store: store}, Cipher: cipher, Storage: files, Timezone: tz},

@@ -668,77 +668,10 @@ func (e *env) topUpRQs(ctx context.Context, spec TenantSpec) error {
 	if n <= 0 {
 		return nil
 	}
-	rows, err := e.db.QueryContext(ctx, `SELECT u.id, r.code FROM app_user u JOIN user_role ur ON ur.user_id = u.id JOIN role r ON r.id = ur.role_id
-		WHERE u.tenant_id = ? AND u.deleted_at IS NULL AND u.status = 'ACTIVE' ORDER BY u.id`, tid)
+	d, err := e.loadDeps(ctx, spec, tid)
 	if err != nil {
 		return err
 	}
-	var d rqDeps
-	for rows.Next() {
-		var id uint64
-		var role string
-		if err := rows.Scan(&id, &role); err != nil {
-			rows.Close()
-			return err
-		}
-		p, err := e.auth.Principal(ctx, id)
-		if err != nil {
-			rows.Close()
-			return err
-		}
-		if role == "RECRUITER" {
-			d.analysts = append(d.analysts, user{p, p.FullName})
-		} else if role == "TENANT_ADMIN" || role == "SELECTION_LEAD" || role == "COMMERCIAL" {
-			d.writers = append(d.writers, user{p, p.FullName})
-		}
-	}
-	rows.Close()
-	if len(d.analysts) == 0 || len(d.writers) == 0 {
-		return fmt.Errorf("%s: faltan analistas o administradores", spec.Slug)
-	}
-	if d.m, err = e.loadMasters(ctx, tid); err != nil {
-		return err
-	}
-	d.skillID = func(lbl string) string { return d.m.byLabel["TECH_SKILL"][strings.ToLower(lbl)] }
-	d.clientIDs = d.m.ids("CLIENT")
-	d.contacts = map[string][]string{}
-	for _, c := range d.clientIDs {
-		docs, err := e.rqs.Contacts(ctx, d.writers[0].p, c)
-		if err != nil {
-			return err
-		}
-		for _, doc := range docs {
-			var x struct{ ID string }
-			if json.Unmarshal(doc, &x) == nil {
-				d.contacts[c] = append(d.contacts[c], x.ID)
-			}
-		}
-	}
-	trows, err := e.db.QueryContext(ctx, "SELECT uuid, IFNULL(headline, ''), first_name, last_name FROM talent WHERE tenant_id = ? AND deleted_at IS NULL", tid)
-	if err != nil {
-		return err
-	}
-	byHeadline := map[string]string{}
-	for _, pr := range spec.Industry.Profiles {
-		for _, h := range pr.Headlines {
-			byHeadline[h] = pr.Code
-		}
-	}
-	d.byProfile = map[string][]talentRef{}
-	for trows.Next() {
-		var t talentRef
-		var headline, first, last string
-		if err := trows.Scan(&t.id, &headline, &first, &last); err != nil {
-			trows.Close()
-			return err
-		}
-		t.profile, t.name = byHeadline[headline], first+" "+last
-		d.all = append(d.all, t)
-		if t.profile != "" {
-			d.byProfile[t.profile] = append(d.byProfile[t.profile], t)
-		}
-	}
-	trows.Close()
 	e.genRQs(ctx, spec, n, d)
 	return nil
 }
@@ -788,4 +721,81 @@ func (e *env) owners(lead user, analysts []user) []string {
 		}
 	}
 	return out
+}
+
+// loadDeps reúne lo que usa la generación de RQ de un tenant ya creado: analistas y quienes crean RQ, catálogos,
+// clientes con sus contactos y postulantes por perfil.
+func (e *env) loadDeps(ctx context.Context, spec TenantSpec, tid uint64) (rqDeps, error) {
+	var d rqDeps
+	rows, err := e.db.QueryContext(ctx, `SELECT u.id, r.code FROM app_user u JOIN user_role ur ON ur.user_id = u.id JOIN role r ON r.id = ur.role_id
+		WHERE u.tenant_id = ? AND u.deleted_at IS NULL AND u.status = 'ACTIVE' ORDER BY u.id`, tid)
+	if err != nil {
+		return d, err
+	}
+	for rows.Next() {
+		var id uint64
+		var role string
+		if err := rows.Scan(&id, &role); err != nil {
+			rows.Close()
+			return d, err
+		}
+		p, err := e.auth.Principal(ctx, id)
+		if err != nil {
+			rows.Close()
+			return d, err
+		}
+		if role == "RECRUITER" {
+			d.analysts = append(d.analysts, user{p, p.FullName})
+		} else if role == "TENANT_ADMIN" || role == "SELECTION_LEAD" || role == "COMMERCIAL" {
+			d.writers = append(d.writers, user{p, p.FullName})
+		}
+	}
+	rows.Close()
+	if len(d.analysts) == 0 || len(d.writers) == 0 {
+		return d, fmt.Errorf("%s: faltan analistas o administradores", spec.Slug)
+	}
+	if d.m, err = e.loadMasters(ctx, tid); err != nil {
+		return d, err
+	}
+	d.skillID = func(lbl string) string { return d.m.byLabel["TECH_SKILL"][strings.ToLower(lbl)] }
+	d.clientIDs = d.m.ids("CLIENT")
+	d.contacts = map[string][]string{}
+	for _, c := range d.clientIDs {
+		docs, err := e.rqs.Contacts(ctx, d.writers[0].p, c)
+		if err != nil {
+			return d, err
+		}
+		for _, doc := range docs {
+			var x struct{ ID string }
+			if json.Unmarshal(doc, &x) == nil {
+				d.contacts[c] = append(d.contacts[c], x.ID)
+			}
+		}
+	}
+	trows, err := e.db.QueryContext(ctx, "SELECT uuid, IFNULL(headline, ''), first_name, last_name FROM talent WHERE tenant_id = ? AND deleted_at IS NULL", tid)
+	if err != nil {
+		return d, err
+	}
+	byHeadline := map[string]string{}
+	for _, pr := range spec.Industry.Profiles {
+		for _, h := range pr.Headlines {
+			byHeadline[h] = pr.Code
+		}
+	}
+	d.byProfile = map[string][]talentRef{}
+	for trows.Next() {
+		var t talentRef
+		var headline, first, last string
+		if err := trows.Scan(&t.id, &headline, &first, &last); err != nil {
+			trows.Close()
+			return d, err
+		}
+		t.profile, t.name = byHeadline[headline], first+" "+last
+		d.all = append(d.all, t)
+		if t.profile != "" {
+			d.byProfile[t.profile] = append(d.byProfile[t.profile], t)
+		}
+	}
+	trows.Close()
+	return d, nil
 }

@@ -189,6 +189,26 @@ func (s *Server) requireAuth(next http.Handler) http.Handler {
 	})
 }
 
+// requireFeature: el módulo debe estar habilitado para el tenant del usuario (el Super Admin no depende del catálogo).
+func (s *Server) requireFeature(code string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if s.Features != nil {
+				ok, err := s.Features.Allowed(r.Context(), principal(r), code)
+				if err != nil {
+					s.writeErr(w, r, err)
+					return
+				}
+				if !ok {
+					s.writeErr(w, r, domain.NewError("FEATURE_DISABLED"))
+					return
+				}
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 func (s *Server) requirePerm(perm string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -36,6 +36,7 @@ type Deps struct {
 	Notifications *app.NotificationService
 	Requirements  *app.RequirementService
 	Documents     *app.DocumentService
+	Features      *app.FeatureService
 	Support       *app.SupportService
 	Sync          ports.SyncRepository
 	Audit         ports.AuditRepository
@@ -103,19 +104,19 @@ func (s *Server) Handler() http.Handler {
 				r.With(s.requirePerm("tenant.users.invite")).Get("/invitations", s.listInvitations)
 				r.With(s.requirePerm("tenant.users.invite")).Post("/invitations", s.createInvitation)
 				r.With(s.requirePerm("tenant.users.invite")).Delete("/invitations/{id}", s.revokeInvitation)
-				r.With(s.requirePerm("tenant.apikeys.request")).Get("/api-keys", s.listApiKeys)
-				r.With(s.requirePerm("tenant.apikeys.request")).Post("/api-keys", s.createApiKey)
-				r.With(s.requirePerm("tenant.apikeys.request")).Post("/api-keys/{id}/revoke", s.revokeApiKey)
+				r.With(s.requirePerm("tenant.apikeys.request"), s.requireFeature("api_keys")).Get("/api-keys", s.listApiKeys)
+				r.With(s.requirePerm("tenant.apikeys.request"), s.requireFeature("api_keys")).Post("/api-keys", s.createApiKey)
+				r.With(s.requirePerm("tenant.apikeys.request"), s.requireFeature("api_keys")).Post("/api-keys/{id}/revoke", s.revokeApiKey)
 				r.With(s.requirePerm("tenant.translations.manage")).Put("/translations", s.upsertTranslation)
 				r.With(s.requirePerm("tenant.audit.read")).Get("/audit", s.listAudit)
 				r.With(s.requirePerm("talent.read")).Get("/home", s.homeSummary)
-				r.With(s.requirePerm("talent.write")).Get("/identity/dni/{dni}", s.lookupDNI)
+				r.With(s.requirePerm("talent.write"), s.requireFeature("dni_lookup")).Get("/identity/dni/{dni}", s.lookupDNI)
 				r.Group(s.notificationRoutes)
-				r.Group(s.requirementRoutes)
-				r.Group(s.documentRoutes)
+				r.With(s.requireFeature("requirements")).Group(s.requirementRoutes)
+				r.With(s.requireFeature("rq_documents")).Group(s.documentRoutes)
 				r.Group(s.talentRoutes)
-				r.Group(s.blacklistRoutes)
-				r.Group(s.interviewRoutes)
+				r.With(s.requireFeature("blacklist")).Group(s.blacklistRoutes)
+				r.With(s.requireFeature("interviews")).Group(s.interviewRoutes)
 			})
 
 			// Plataforma (Super Admin)
@@ -133,6 +134,7 @@ func (s *Server) Handler() http.Handler {
 				r.With(s.requirePerm("platform.audit.read")).Get("/audit", s.listAudit)
 				r.With(s.requirePerm("platform.usage.read")).Get("/usage", s.usageReport)
 				r.Group(s.notificationRoutes)
+				r.Group(s.featureRoutes)
 			})
 		})
 	})

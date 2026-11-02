@@ -64,12 +64,13 @@ BEGIN
 END $$
 
 -- Notificación a una audiencia, sin agrupar:
---   SUPER_ADMINS = usuarios con platform.support.manage; USER = p_user_id; ALL = todos los usuarios activos.
+--   SUPER_ADMINS = usuarios con platform.support.manage; USER = p_user_id; ALL = todos los usuarios activos;
+--   TENANT_ROLES = usuarios del tenant p_tenant_id con alguno de los roles de p_roles (JSON).
 -- p_tenant_id NULL = notificación de plataforma. Mismas salidas que sp_notify_entity.
 DROP PROCEDURE IF EXISTS sp_notify_users $$
 CREATE PROCEDURE sp_notify_users(IN p_actor_id BIGINT UNSIGNED, IN p_tenant_id BIGINT UNSIGNED, IN p_uuid CHAR(36),
   IN p_type VARCHAR(40), IN p_entity_type VARCHAR(30), IN p_entity_uuid CHAR(36), IN p_payload JSON,
-  IN p_audience VARCHAR(15), IN p_user_id BIGINT UNSIGNED)
+  IN p_audience VARCHAR(15), IN p_user_id BIGINT UNSIGNED, IN p_roles JSON)
 BEGIN
   DECLARE v_id BIGINT UNSIGNED;
   INSERT INTO notification (uuid, tenant_id, type, entity_type, entity_uuid, actor_user_id, payload)
@@ -83,6 +84,8 @@ BEGIN
            WHEN 'USER' THEN u.id = p_user_id
            WHEN 'SUPER_ADMINS' THEN EXISTS (SELECT 1 FROM v_user_permission vp WHERE vp.user_id = u.id AND vp.code = 'platform.support.manage')
            WHEN 'ALL' THEN 1
+           WHEN 'TENANT_ROLES' THEN u.tenant_id = p_tenant_id AND EXISTS (SELECT 1 FROM user_role ur JOIN role ro ON ro.id = ur.role_id
+                                     WHERE ur.user_id = u.id AND JSON_CONTAINS(p_roles, JSON_QUOTE(ro.code)))
            ELSE 0
          END
      AND NOT EXISTS (SELECT 1 FROM notification_pref np WHERE np.user_id = u.id AND np.type = p_type AND np.in_app = 0);

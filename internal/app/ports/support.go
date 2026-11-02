@@ -39,4 +39,5 @@ const (
 	AudienceSuperAdmins = "SUPER_ADMINS"
 	AudienceUser        = "USER"
 	AudienceAll         = "ALL"
+	AudienceTenantRoles = "TENANT_ROLES" // usuarios del tenant con alguno de los roles indicados
 )

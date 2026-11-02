@@ -267,7 +267,7 @@ func (s *SupportService) notifyUsers(ctx context.Context, p *domain.Principal, t
 		return
 	}
 	in := ports.NotifyInput{ID: uuid.NewString(), Type: typ, EntityType: entity, EntityID: entityID, Payload: payload}
-	res, err := n.Repo.NotifyUsers(context.WithoutCancel(ctx), meta(p, ""), tid, in, audience, userID)
+	res, err := n.Repo.NotifyUsers(context.WithoutCancel(ctx), meta(p, ""), tid, in, audience, userID, nil)
 	if err != nil {
 		slog.Warn("no se pudo registrar la notificación", "type", typ, "err", err)
 		return

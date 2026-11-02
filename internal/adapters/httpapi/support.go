@@ -20,7 +20,7 @@ func (s *Server) supportRoutes(r chi.Router) {
 	r.Use(s.idempotent)
 	r.Post("/support/files", s.supportUpload)
 	r.Get("/support/files/{fid}", s.supportFile)
-	r.Post("/support", s.supportCreate)
+	r.With(s.requireFeature("support")).Post("/support", s.supportCreate)
 	r.Get("/support", s.supportList)
 	r.Get("/support/{id}", s.supportGet)
 	r.Post("/support/{id}/messages", s.supportReply)

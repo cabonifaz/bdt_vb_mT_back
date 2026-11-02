@@ -18,7 +18,6 @@ detail() { req POST /api/v1/tenant/requirements/candidates/$1/detail "$2" "{\"to
 
 code -H "$J" -d "{\"email\":\"$SA_EMAIL\",\"password\":\"$SA_PASSWORD\"}" $API/api/v1/auth/login >/dev/null; SA=$(body | jget .accessToken)
 code -H "Authorization: Bearer $SA" $API/api/v1/platform/tenants >/dev/null; FRACTAL=$(body | jget '.items.find(t=>t.slug==="fractal").id')
-check "Fractal sin RUC (el CUL no se consulta)" "$(code -H "Authorization: Bearer $SA" $API/api/v1/platform/tenants >/dev/null; body | js "o.items.find(t=>t.slug==='fractal').taxId??''")" ""
 mkuser() {
   local email="$1.$RANDOM$RANDOM@fractal.test" role=$2 pw="Talent-$RANDOM-Seg!x"
   code -H "Authorization: Bearer $SA" -H "$J" -d "{\"email\":\"$email\",\"role\":\"$role\"}" "$API/api/v1/platform/invitations?tenantId=$FRACTAL" >/dev/null
@@ -74,11 +73,12 @@ check "el manual no se reconsulta" "$(req POST /api/v1/tenant/requirements/candi
 check "por postulación: en el otro RQ sigue faltando" "$(detail $C2 "$R" | js "o.documents.find(d=>d.code==='CERTIFICATE').current===null")" true
 
 echo "== CUL (automático)"
-check "carga el CUL" "$(upload "$R" $PDF $CUL $C1 20269409807 43989632)" 201
-check "sin RUC del tenant queda pendiente" "$(body | js "o.status+':'+o.reason")" "PENDING:TENANT_RUC_MISSING"
+# sin código del QR: nunca se consulta al MTPE (con o sin RUC del tenant)
+check "carga el CUL" "$(upload "$R" $PDF $CUL $C1)" 201
+check "sin código o sin RUC queda pendiente" "$(body | js "o.status+':'+(o.reason==='TENANT_RUC_MISSING'||o.reason==='CUL_CODE_MISSING')")" "PENDING:true"
 check "reutilizable: también cuenta en el otro RQ" "$(detail $C2 "$R" | js "(d=>d.status+':'+d.fromOtherRq)(o.documents.find(d=>d.code==='CUL').current)")" "PENDING:true"
 CULDOC=$(detail $C1 "$R" | js "o.documents.find(d=>d.code==='CUL').current.id")
-check "reconsultar sin código del QR" "$(req POST /api/v1/tenant/requirements/candidates/$C1/documents/$CULDOC/recheck "$R" '{}' >/dev/null; body | js "o.status+':'+o.reason")" "PENDING:TENANT_RUC_MISSING"
+check "reconsultar sin código del QR" "$(req POST /api/v1/tenant/requirements/candidates/$C1/documents/$CULDOC/recheck "$R" '{}' >/dev/null; body | js "o.status+':'+(o.reason==='TENANT_RUC_MISSING'||o.reason==='CUL_CODE_MISSING')")" "PENDING:true"
 check "vence a los 90 días" "$(detail $C1 "$R" | js "o.documents.find(d=>d.code==='CUL').current.expiresAt")" "$(date -d "+90 day" +%F)"
 check "resumen en el tablero del RQ" "$(code -H "$V" $API/api/v1/tenant/requirements/$RQ1 >/dev/null; body | js "o.candidates[0].docs.map(d=>d.status).sort().join()")" "PENDING,VERIFIED"
 check "línea de tiempo completa" "$(detail $C1 "$R" | js "o.events.map(e=>e.type).join()")" "ADDED,DOC_UPLOADED,DOC_REJECTED,DOC_VERIFIED,DOC_UPLOADED,DOC_CHECK_FAILED,DOC_CHECK_FAILED"

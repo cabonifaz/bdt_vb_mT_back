@@ -130,13 +130,17 @@ func (r SupportRepo) TourSeen(ctx context.Context, m ports.Meta, key string, ver
 }
 
 // NotifyUsers: notificación sin agrupar a una audiencia (soporte y novedades); tenantID 0 = de plataforma.
-func (r NotificationRepo) NotifyUsers(ctx context.Context, m ports.Meta, tenantID uint64, in ports.NotifyInput, audience string, userID uint64) (*ports.NotifyResult, error) {
-	var uid any
+func (r NotificationRepo) NotifyUsers(ctx context.Context, m ports.Meta, tenantID uint64, in ports.NotifyInput, audience string, userID uint64, roles []string) (*ports.NotifyResult, error) {
+	var uid, rj any
 	if userID != 0 {
 		uid = userID
 	}
+	if len(roles) > 0 {
+		b, _ := json.Marshal(roles)
+		rj = string(b)
+	}
 	rs, err := r.call(ctx, "sp_notify_users", nullU64ptr(m.ActorID), tenantID, in.ID, in.Type, in.EntityType, in.EntityID,
-		string(in.Payload), audience, uid)
+		string(in.Payload), audience, uid, rj)
 	if err != nil {
 		return nil, err
 	}

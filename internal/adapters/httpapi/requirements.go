@@ -22,7 +22,7 @@ func (s *Server) requirementRoutes(r chi.Router) {
 	r.With(write).Put("/requirements/{id}", s.rqSave)
 	r.With(write).Patch("/requirements/{id}/status", s.rqStatus)
 	r.With(s.requirePerm("rq.delete")).Delete("/requirements/{id}", s.rqDelete)
-	r.With(s.requirePerm("rq.reopen")).Post("/requirements/{id}/reopen", s.rqReopen)
+	r.With(s.requirePerm("rq.reopen"), s.requireFeature("rq_reopen")).Post("/requirements/{id}/reopen", s.rqReopen)
 	r.With(cand).Post("/requirements/{id}/candidates", s.rqAddCandidate)
 	r.With(cand).Patch("/requirements/candidates/{cid}", s.rqMoveCandidate)
 	r.With(cand).Delete("/requirements/candidates/{cid}", s.rqRemoveCandidate)

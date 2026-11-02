@@ -1,9 +1,11 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -78,6 +80,7 @@ type meOut struct {
 	Roles       []string `json:"roles"`
 	Permissions []string `json:"permissions"`
 	IsPlatform  bool     `json:"isPlatform"`
+	Features    []string `json:"features,omitempty"` // habilitadas para su tenant
 }
 
 func toMe(p *domain.Principal) meOut {
@@ -85,9 +88,11 @@ func toMe(p *domain.Principal) meOut {
 		Roles: p.Roles, Permissions: p.Perms, IsPlatform: p.IsPlatform()}
 }
 
-func (s *Server) writeSession(w http.ResponseWriter, sess *app.Session) {
+func (s *Server) writeSession(w http.ResponseWriter, r *http.Request, sess *app.Session) {
 	s.setRefreshCookie(w, sess.RefreshToken, sess.RefreshExp, sess.Remember)
-	writeJSON(w, http.StatusOK, sessionOut{AccessToken: sess.AccessToken, ExpiresAt: sess.ExpiresAt, User: toMe(sess.User)})
+	user := toMe(sess.User)
+	user.Features = s.featuresOf(r.Context(), sess.User)
+	writeJSON(w, http.StatusOK, sessionOut{AccessToken: sess.AccessToken, ExpiresAt: sess.ExpiresAt, User: user})
 }
 
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
@@ -106,7 +111,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		s.writeErr(w, r, err)
 		return
 	}
-	s.writeSession(w, sess)
+	s.writeSession(w, r, sess)
 }
 
 func (s *Server) refresh(w http.ResponseWriter, r *http.Request) {
@@ -125,7 +130,7 @@ func (s *Server) refresh(w http.ResponseWriter, r *http.Request) {
 		s.writeErr(w, r, err)
 		return
 	}
-	s.writeSession(w, sess)
+	s.writeSession(w, r, sess)
 }
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
@@ -142,7 +147,26 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 		s.writeErr(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, toMe(p))
+	out := toMe(p)
+	out.Features = s.featuresOf(r.Context(), p)
+	writeJSON(w, http.StatusOK, out)
+}
+
+// featuresOf: funcionalidades habilitadas del tenant (vacío para el Super Admin, que no depende del catálogo).
+func (s *Server) featuresOf(ctx context.Context, p *domain.Principal) []string {
+	if s.Features == nil || p.IsPlatform() {
+		return nil
+	}
+	set, err := s.Features.Enabled(ctx, *p.TenantID)
+	if err != nil {
+		return nil
+	}
+	out := make([]string, 0, len(set))
+	for c := range set {
+		out = append(out, c)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // ------------------------------------------------------------------ Público

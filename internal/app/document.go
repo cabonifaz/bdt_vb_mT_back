@@ -27,6 +27,10 @@ type DocumentService struct {
 	Cipher ports.Cipher
 	Files  FileUploader
 	CUL    ports.CULVerifier
+	// Features: si la validación automática del CUL (cul_auto) está suspendida para el tenant, el CUL queda por revisar
+	Features interface {
+		Allowed(ctx context.Context, p *domain.Principal, code string) (bool, error)
+	}
 }
 
 // FileUploader guarda el archivo cifrado en el talento (lo implementa TalentService).
@@ -107,7 +111,7 @@ func (s *DocumentService) Upload(ctx context.Context, p *domain.Principal, ip, c
 	if err != nil {
 		return nil, err
 	}
-	if dc.Verification != "AUTO_CUL" {
+	if dc.Verification != "AUTO_CUL" || !s.autoCUL(ctx, p) {
 		return &ports.DocVerdict{Status: "PENDING"}, nil
 	}
 	return s.verifyCUL(ctx, p, ip, tid, candidateID, dc, hint)
@@ -126,10 +130,19 @@ func (s *DocumentService) Recheck(ctx context.Context, p *domain.Principal, ip, 
 	if err != nil {
 		return nil, err
 	}
-	if dc.Verification != "AUTO_CUL" {
+	if dc.Verification != "AUTO_CUL" || !s.autoCUL(ctx, p) {
 		return nil, domain.ErrValidation
 	}
 	return s.verifyCUL(ctx, p, ip, tid, candidateID, dc, hint)
+}
+
+// autoCUL: la validación automática del CUL está habilitada para el tenant del usuario.
+func (s *DocumentService) autoCUL(ctx context.Context, p *domain.Principal) bool {
+	if s.Features == nil {
+		return true
+	}
+	ok, err := s.Features.Allowed(ctx, p, "cul_auto")
+	return err == nil && ok
 }
 
 // Verify: validación manual (aprobar o rechazar con motivo).

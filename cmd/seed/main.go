@@ -47,6 +47,8 @@ type env struct {
 	rqs      *app.RequirementService
 	ivs      *app.InterviewService
 	bl       *app.BlacklistService
+	docs     *app.DocumentService // sin verificador: los resultados del CUL de prueba se registran simulados
+	docRepo  mysql.DocumentRepo
 	workers  int
 	errCount atomic.Int64
 	rnd      *mrand.Rand
@@ -57,6 +59,10 @@ func main() {
 	reset := flag.Bool("reset", false, "borrar los datos de staging (conserva Super Admin, tenant Fractal con su marca, el admin indicado y los catálogos globales)")
 	seed := flag.Bool("seed", false, "generar los datos de prueba")
 	topup := flag.Bool("topup", false, "completar los RQ que falten en los tenants ya generados")
+	scen := flag.Bool("scenarios", false, "escenarios de documentos y CUL (más clientes y RQ, maestro de documentos, documentos de postulantes en todos los estados, RQ reabiertos)")
+	apiURL := flag.String("api", "https://bdtvbmtback-staging.up.railway.app", "API del ambiente donde se suben los archivos (-scenarios)")
+	extraRQs := flag.Int("extra-rqs", 40, "RQ adicionales por tenant (-scenarios)")
+	fractalRUC := flag.String("fractal-ruc", "", "RUC real con el que Fractal verifica el CUL en el MTPE (-scenarios); los RUC de prueba de los demás tenants se quitan")
 	leads := flag.Bool("leads", false, "agregar el jefe de selección a los tenants ya generados (sus claves se añaden a -creds)")
 	keepAdmin := flag.String("keep-admin", "", "correo del admin de Fractal que se conserva")
 	creds := flag.String("creds", "../_secrets/seed_users.env", "archivo (fuera del repo) donde se guardan las credenciales generadas")
@@ -110,6 +116,8 @@ func main() {
 		rqs:     &app.RequirementService{Repo: mysql.RequirementRepo{Store: store}, Cipher: cipher},
 		ivs:     &app.InterviewService{Repo: mysql.InterviewRepo{Store: store}, Cipher: cipher, Storage: files, Timezone: tz},
 		bl:      &app.BlacklistService{Repo: mysql.BlacklistRepo{Store: store}, Cipher: cipher},
+		docs:    &app.DocumentService{Repo: mysql.DocumentRepo{Store: store}, Cipher: cipher},
+		docRepo: mysql.DocumentRepo{Store: store},
 	}
 
 	if *reset {
@@ -160,6 +168,38 @@ func main() {
 				fail(err)
 			}
 		}
+	}
+	if *scen {
+		start := time.Now()
+		analysts, pwd, err := loadCreds(*creds)
+		if err != nil {
+			fail(err)
+		}
+		api := newAPISeed(*apiURL, 8) // bajo el límite de 600 por minuto de la API
+		for slug, list := range analysts {
+			for _, em := range list {
+				api.pwd[em], api.slugs[em] = pwd[em], slug
+			}
+		}
+		// RUC: solo reales (los de prueba harían consultar al MTPE con RUC inexistentes)
+		for _, spec := range tenants {
+			if *only != "" && spec.Slug != *only {
+				continue
+			}
+			ruc := any(nil)
+			if spec.Slug == "fractal" && *fractalRUC != "" {
+				ruc = *fractalRUC
+			}
+			if _, err := e.db.ExecContext(ctx, "UPDATE tenant SET tax_id = ? WHERE slug = ?", ruc, spec.Slug); err != nil {
+				fail(err)
+			}
+			t0 := time.Now()
+			if err := e.scenarios(ctx, spec, api, analysts[spec.Slug], *extraRQs); err != nil {
+				fail(fmt.Errorf("%s: %w", spec.Slug, err))
+			}
+			fmt.Printf("%-18s escenarios listos en %s (errores acumulados: %d)\n", spec.Slug, time.Since(t0).Round(time.Second), e.errCount.Load())
+		}
+		fmt.Printf("escenarios completos en %s\n", time.Since(start).Round(time.Second))
 	}
 	if *seed {
 		start := time.Now()
@@ -357,7 +397,7 @@ func (m masterMap) ids(table string) []string {
 func (e *env) loadMasters(ctx context.Context, tid uint64) (masterMap, error) {
 	items, err := e.masters.Items(ctx, &tid, "COUNTRY,DOC_IDENTITY_TYPE,CURRENCY,BILLING_MODALITY,TALENT_AVAILABILITY,LANGUAGE,LANGUAGE_LEVEL,"+
 		"SOFT_SKILL,TECH_SKILL,ACADEMIC_GRADE,RQ_STATUS,RQ_PROFILE,TIME_UNIT,WORK_MODALITY,CONTRACT_MODALITY,CANDIDATE_STAGE,CLIENT,"+
-		"INTERVIEW_TYPE,INTERVIEW_STAGE,INTERVIEW_STATUS,INTERVIEW_DURATION", false)
+		"INTERVIEW_TYPE,INTERVIEW_STAGE,INTERVIEW_STATUS,INTERVIEW_DURATION,DOCUMENT_TYPE", false)
 	if err != nil {
 		return masterMap{}, err
 	}
