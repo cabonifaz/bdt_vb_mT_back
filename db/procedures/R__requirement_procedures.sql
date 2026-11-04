@@ -39,15 +39,18 @@ BEGIN
   DECLARE v_search VARCHAR(110);
   DECLARE v_warn, v_crit INT;
   DECLARE v_notify TINYINT(1);
+  DECLARE v_tz VARCHAR(60);
   CALL sp_assert_actor(p_actor_id, p_tenant_id, 'rq.read');
   CALL sp_rq_alert_days(p_tenant_id, v_warn, v_crit, v_notify);
+  -- los movimientos se guardan en UTC; los días sin movimiento se cuentan con la fecha local del tenant
+  SELECT timezone INTO v_tz FROM tenant WHERE id = p_tenant_id;
   SET v_search = IF(p_search IS NULL OR TRIM(p_search) = '', NULL, CONCAT('%', LOWER(TRIM(p_search)), '%'));
 
   -- RQ que cumplen los filtros (sin la vista); de aquí salen las tarjetas y los contadores
   DROP TEMPORARY TABLE IF EXISTS tmp_rq_board;
   CREATE TEMPORARY TABLE tmp_rq_board (id BIGINT UNSIGNED PRIMARY KEY, is_open TINYINT(1), due DATE, created DATE, idle INT NULL) ENGINE=MEMORY;
   INSERT INTO tmp_rq_board
-  SELECT r.id, s.str1 = 'OPEN', r.due_date, DATE(r.created_at), IF(s.str1 = 'OPEN' AND act.in_process > 0, DATEDIFF(p_today, DATE(act.last_move_at)), NULL)
+  SELECT r.id, s.str1 = 'OPEN', r.due_date, DATE(r.created_at), IF(s.str1 = 'OPEN' AND act.in_process > 0, DATEDIFF(p_today, DATE(IFNULL(CONVERT_TZ(act.last_move_at, '+00:00', v_tz), act.last_move_at))), NULL)
     FROM requirement r
     JOIN master_item s ON s.id = r.status_item_id
     JOIN v_rq_activity act ON act.requirement_id = r.id
@@ -90,7 +93,7 @@ BEGIN
            'stale', IF(f.idle >= v_warn, JSON_OBJECT('level', IF(f.idle >= v_crit, 2, 1), 'days', f.idle,
                           'candidates', (SELECT COUNT(*) FROM requirement_candidate rc JOIN master_item cs ON cs.id = rc.stage_item_id
                                           WHERE rc.requirement_id = r.id AND rc.deleted_at IS NULL AND rc.resigned_at IS NULL
-                                            AND cs.code <> 'CONFIRMED' AND DATEDIFF(p_today, DATE(rc.stage_at)) >= v_warn)), NULL)
+                                            AND cs.code <> 'CONFIRMED' AND DATEDIFF(p_today, DATE(IFNULL(CONVERT_TZ(rc.stage_at, '+00:00', v_tz), rc.stage_at))) >= v_warn)), NULL)
          ) AS doc
     FROM tmp_rq_board f
     JOIN requirement r ON r.id = f.id

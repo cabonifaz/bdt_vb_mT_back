@@ -41,7 +41,7 @@ END $$
 -- Barrido (lo corre la API cada hora): recalcula el nivel de cada RQ y devuelve los que subieron de nivel
 -- (de nada a atención, o a crítico) para notificar a sus responsables y a los jefes de selección. Solo una vez por
 -- nivel: si hay movimiento, el nivel vuelve a 0 y la alerta podrá repetirse más adelante.
--- p_today: fecha local de la plataforma. Tenants suspendidos, con la funcionalidad apagada o sin aviso no se notifican.
+-- Los días se cuentan con la fecha local de cada tenant (p_today solo si su zona horaria no se reconoce). Tenants suspendidos, con la funcionalidad apagada o sin aviso no se notifican.
 DROP PROCEDURE IF EXISTS sp_rq_stale_scan $$
 CREATE PROCEDURE sp_rq_stale_scan(IN p_today DATE)
 BEGIN
@@ -55,7 +55,9 @@ BEGIN
                  IFNULL(a.notify, 1) = 1 AND t.status = 'ACTIVE'
                    AND EXISTS (SELECT 1 FROM feature f LEFT JOIN tenant_feature tf ON tf.feature_id = f.id AND tf.tenant_id = r.tenant_id
                                 WHERE f.code = 'rq_stale_alerts' AND f.status = 'ACTIVE' AND IFNULL(tf.enabled, f.default_enabled) = 1) AS notify,
-                 IF(s.str1 = 'OPEN' AND act.in_process > 0, DATEDIFF(p_today, DATE(act.last_move_at)), NULL) AS idle
+                 IF(s.str1 = 'OPEN' AND act.in_process > 0,
+                    DATEDIFF(IFNULL(DATE(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', t.timezone)), p_today),
+                             DATE(IFNULL(CONVERT_TZ(act.last_move_at, '+00:00', t.timezone), act.last_move_at))), NULL) AS idle
             FROM requirement r
             JOIN tenant t ON t.id = r.tenant_id AND t.deleted_at IS NULL
             JOIN master_item s ON s.id = r.status_item_id
