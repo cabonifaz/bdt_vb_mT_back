@@ -18,6 +18,8 @@ func (s *Server) requirementRoutes(r chi.Router) {
 
 	// tablero por POST: los filtros no quedan en URLs ni en logs de acceso
 	r.With(read).Post("/requirements/board", s.rqBoard)
+	r.With(read).Get("/requirements/alert-settings", s.rqAlertSettings)
+	r.With(s.requirePerm("rq.alerts.manage"), s.requireFeature("rq_stale_alerts")).Put("/requirements/alert-settings", s.rqSaveAlertSettings)
 	r.With(read).Get("/requirements/{id}", s.rqGet)
 	r.With(write).Put("/requirements/{id}", s.rqSave)
 	r.With(write).Patch("/requirements/{id}/status", s.rqStatus)
@@ -54,6 +56,29 @@ func (s *Server) rqBoard(w http.ResponseWriter, r *http.Request) {
 	}
 	noStore(w)
 	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) rqAlertSettings(w http.ResponseWriter, r *http.Request) {
+	out, err := s.Requirements.AlertSettings(r.Context(), principal(r))
+	if err != nil {
+		s.writeErr(w, r, err)
+		return
+	}
+	noStore(w)
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) rqSaveAlertSettings(w http.ResponseWriter, r *http.Request) {
+	var in ports.RQAlertSettings
+	if err := decode(w, r, &in); err != nil {
+		s.writeErr(w, r, err)
+		return
+	}
+	if err := s.Requirements.SaveAlertSettings(r.Context(), principal(r), s.clientIP(r), in); err != nil {
+		s.writeErr(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) rqGet(w http.ResponseWriter, r *http.Request) {

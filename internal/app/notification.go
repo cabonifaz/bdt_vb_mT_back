@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/url"
 	"strings"
@@ -208,6 +209,78 @@ func (s *NotificationService) RQChanged(ctx context.Context, p *domain.Principal
 		Payload: payload, RecipientPerm: "rq.read"}, func(actor, locale, id string) pushMessage {
 		return rqPush(locale, c, actor, link, id)
 	})
+}
+
+// RQStale avisa a los responsables del RQ y a los jefes de selección que el RQ lleva días sin que ningún
+// postulante cambie de etapa (nivel 1 atención, 2 crítico).
+func (s *NotificationService) RQStale(ctx context.Context, r ports.StaleRQ) {
+	payload, _ := json.Marshal(map[string]any{"code": r.Code, "title": r.Title, "client": r.Client, "days": r.Days, "level": r.Level})
+	in := ports.NotifyInput{ID: uuid.NewString(), Type: domain.NotifRQStale, EntityType: "REQUIREMENT", EntityID: r.ID, Payload: payload}
+	res, err := s.Repo.NotifyUsers(context.WithoutCancel(ctx), ports.Meta{}, r.TenantID, in, ports.AudienceRQTeam, 0, []string{"SELECTION_LEAD"})
+	if err != nil {
+		slog.Warn("no se pudo notificar el RQ sin movimiento", "rq", r.Code, "err", err)
+		return
+	}
+	if len(res.Targets) == 0 || s.Push == nil || !s.Push.Enabled() {
+		return
+	}
+	link := "/" + r.TenantSlug + "/requerimientos/" + r.ID
+	go s.deliver(res.ID, res.Targets, func(locale string) pushMessage { return rqStalePush(locale, r, link, res.ID) })
+}
+
+// RQStaleSummary: un solo aviso cuando varios RQ de la empresa quedaron sin movimiento en el mismo barrido.
+// Llega a los jefes de selección y a los responsables de cualquiera de esos RQ; abre el tablero en "Sin movimiento".
+func (s *NotificationService) RQStaleSummary(ctx context.Context, list []ports.StaleRQ) {
+	if len(list) == 0 {
+		return
+	}
+	ids, codes, critical := make([]string, 0, len(list)), make([]string, 0, 3), 0
+	for _, r := range list {
+		ids = append(ids, r.ID)
+		if len(codes) < 3 {
+			codes = append(codes, r.Code)
+		}
+		if r.Level >= 2 {
+			critical++
+		}
+	}
+	t := list[0]
+	payload, _ := json.Marshal(map[string]any{"count": len(list), "critical": critical, "codes": codes, "rqIds": ids})
+	in := ports.NotifyInput{ID: uuid.NewString(), Type: domain.NotifRQStale, EntityType: "REQUIREMENT_STALE",
+		EntityID: uuid.NewString(), Payload: payload}
+	res, err := s.Repo.NotifyUsers(context.WithoutCancel(ctx), ports.Meta{}, t.TenantID, in, ports.AudienceRQTeam, 0, []string{"SELECTION_LEAD"})
+	if err != nil {
+		slog.Warn("no se pudo notificar los RQ sin movimiento", "tenant", t.TenantSlug, "err", err)
+		return
+	}
+	if len(res.Targets) == 0 || s.Push == nil || !s.Push.Enabled() {
+		return
+	}
+	link := "/" + t.TenantSlug + "/requerimientos?vista=sin-movimiento"
+	go s.deliver(res.ID, res.Targets, func(locale string) pushMessage {
+		title, body := "RQ sin movimiento", fmt.Sprintf("%d requerimientos llevan días sin cambios de etapa en sus postulantes", len(list))
+		if strings.HasPrefix(locale, "en") {
+			title, body = "Stalled requirements", fmt.Sprintf("%d requirements have gone days without candidate stage changes", len(list))
+		}
+		return pushMessage{Title: title, Body: body, URL: link, Tag: "rq-stale", ID: res.ID}
+	})
+}
+
+func rqStalePush(locale string, r ports.StaleRQ, link, id string) pushMessage {
+	title, body := "RQ sin movimiento", fmt.Sprintf("%s · %s: %d días sin cambios de etapa en sus postulantes", r.Code, r.Title, r.Days)
+	if r.Level >= 2 {
+		title = "RQ sin movimiento (crítico)"
+	}
+	if strings.HasPrefix(locale, "en") {
+		title, body = "Stalled requirement", fmt.Sprintf("%s · %s: %d days without candidate stage changes", r.Code, r.Title, r.Days)
+		if r.Level >= 2 {
+			title = "Stalled requirement (critical)"
+		}
+	}
+	if r.Client != "" {
+		body += " (" + r.Client + ")"
+	}
+	return pushMessage{Title: title, Body: body, URL: link, Tag: "rq-stale-" + r.ID, ID: id}
 }
 
 // notify registra la notificación (agrupando cambios seguidos) y, si es nueva, envía el push en segundo plano.

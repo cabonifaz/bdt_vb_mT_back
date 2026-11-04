@@ -18,10 +18,11 @@ const (
 	NotifFeatureNew       = "FEATURE_NEW"       // al Super Admin: funcionalidad nueva por activar
 	NotifFeatureEnabled   = "FEATURE_ENABLED"   // a los usuarios impactados: se activó una funcionalidad en su empresa
 	NotifVersionPublished = "VERSION_PUBLISHED" // a todos: se publicó una versión nueva en el ambiente
+	NotifRQStale          = "RQ_STALE"          // a los responsables y jefes de selección: RQ sin movimiento de postulantes
 )
 
 // NotificationTypes: tipos que el usuario puede configurar (en la app y push).
-var NotificationTypes = []string{NotifTalentCreated, NotifTalentUpdated, NotifRQCreated, NotifRQUpdated, NotifSupportNew, NotifSupportReply, NotifReleaseNote, NotifFeatureNew, NotifFeatureEnabled, NotifVersionPublished}
+var NotificationTypes = []string{NotifTalentCreated, NotifTalentUpdated, NotifRQCreated, NotifRQUpdated, NotifSupportNew, NotifSupportReply, NotifReleaseNote, NotifFeatureNew, NotifFeatureEnabled, NotifVersionPublished, NotifRQStale}
 
 func ValidNotificationType(t string) bool { return slices.Contains(NotificationTypes, t) }
 

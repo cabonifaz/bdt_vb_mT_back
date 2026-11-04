@@ -27,6 +27,7 @@ END $$
 --   ACTIVE  = abiertos sin vencer (por defecto)      SOON   = abiertos que vencen entre hoy y los próximos 3 días
 --   OVERDUE = abiertos vencidos                      NEW    = abiertos registrados en los últimos 7 días
 --   CLOSED  = cerrados (cualquier motivo)            ALL    = todo
+--   STALE   = abiertos sin movimiento: con postulantes en proceso y ninguno cambió de etapa en los días de atención
 -- p_today es la fecha local del usuario (define "vencido"). Filtros opcionales: texto (código, título, cliente,
 -- contacto o perfil), cliente, contacto del cliente, perfil y solo los míos.
 -- Segundo result set: cantidad por vista con los mismos filtros (contadores de las pestañas del tablero).
@@ -36,16 +37,20 @@ CREATE PROCEDURE sp_rq_board(IN p_actor_id BIGINT UNSIGNED, IN p_tenant_id BIGIN
   IN p_scope VARCHAR(10), IN p_today DATE)
 BEGIN
   DECLARE v_search VARCHAR(110);
+  DECLARE v_warn, v_crit INT;
+  DECLARE v_notify TINYINT(1);
   CALL sp_assert_actor(p_actor_id, p_tenant_id, 'rq.read');
+  CALL sp_rq_alert_days(p_tenant_id, v_warn, v_crit, v_notify);
   SET v_search = IF(p_search IS NULL OR TRIM(p_search) = '', NULL, CONCAT('%', LOWER(TRIM(p_search)), '%'));
 
   -- RQ que cumplen los filtros (sin la vista); de aquí salen las tarjetas y los contadores
   DROP TEMPORARY TABLE IF EXISTS tmp_rq_board;
-  CREATE TEMPORARY TABLE tmp_rq_board (id BIGINT UNSIGNED PRIMARY KEY, is_open TINYINT(1), due DATE, created DATE) ENGINE=MEMORY;
+  CREATE TEMPORARY TABLE tmp_rq_board (id BIGINT UNSIGNED PRIMARY KEY, is_open TINYINT(1), due DATE, created DATE, idle INT NULL) ENGINE=MEMORY;
   INSERT INTO tmp_rq_board
-  SELECT r.id, s.str1 = 'OPEN', r.due_date, DATE(r.created_at)
+  SELECT r.id, s.str1 = 'OPEN', r.due_date, DATE(r.created_at), IF(s.str1 = 'OPEN' AND act.in_process > 0, DATEDIFF(p_today, DATE(act.last_move_at)), NULL)
     FROM requirement r
     JOIN master_item s ON s.id = r.status_item_id
+    JOIN v_rq_activity act ON act.requirement_id = r.id
     JOIN master_item c ON c.id = r.client_item_id
    WHERE r.tenant_id = p_tenant_id AND r.deleted_at IS NULL
      AND (p_client_uuid IS NULL OR c.uuid = p_client_uuid)
@@ -81,7 +86,11 @@ BEGIN
                           'covered', (SELECT COUNT(*) FROM requirement_candidate rc JOIN master_item cs ON cs.id = rc.stage_item_id
                                        WHERE rc.vacancy_id = v.id AND rc.deleted_at IS NULL AND rc.resigned_at IS NULL AND cs.code = 'CONFIRMED')))
                           FROM requirement_vacancy v JOIN master_item p ON p.id = v.profile_item_id
-                         WHERE v.requirement_id = r.id AND v.deleted_at IS NULL)
+                         WHERE v.requirement_id = r.id AND v.deleted_at IS NULL),
+           'stale', IF(f.idle >= v_warn, JSON_OBJECT('level', IF(f.idle >= v_crit, 2, 1), 'days', f.idle,
+                          'candidates', (SELECT COUNT(*) FROM requirement_candidate rc JOIN master_item cs ON cs.id = rc.stage_item_id
+                                          WHERE rc.requirement_id = r.id AND rc.deleted_at IS NULL AND rc.resigned_at IS NULL
+                                            AND cs.code <> 'CONFIRMED' AND DATEDIFF(p_today, DATE(rc.stage_at)) >= v_warn)), NULL)
          ) AS doc
     FROM tmp_rq_board f
     JOIN requirement r ON r.id = f.id
@@ -94,6 +103,7 @@ BEGIN
            WHEN 'OVERDUE' THEN f.is_open = 1 AND f.due < p_today
            WHEN 'SOON'    THEN f.is_open = 1 AND f.due BETWEEN p_today AND p_today + INTERVAL 3 DAY
            WHEN 'NEW'     THEN f.is_open = 1 AND f.created >= p_today - INTERVAL 7 DAY
+           WHEN 'STALE'   THEN f.is_open = 1 AND f.idle >= v_warn
            ELSE f.is_open = 1 AND f.due >= p_today
          END
    ORDER BY s.sort_order, IF(f.is_open = 0, IFNULL(r.updated_at, r.created_at), NULL) DESC, r.board_order, r.due_date, r.id
@@ -104,7 +114,8 @@ BEGIN
          IFNULL(SUM(is_open = 1 AND due < p_today), 0) AS overdue,
          IFNULL(SUM(is_open = 1 AND created >= p_today - INTERVAL 7 DAY), 0) AS recent,
          IFNULL(SUM(is_open = 0), 0) AS closed,
-         COUNT(*) AS total
+         COUNT(*) AS total,
+         IFNULL(SUM(is_open = 1 AND idle >= v_warn), 0) AS stale
     FROM tmp_rq_board;
   DROP TEMPORARY TABLE tmp_rq_board;
 END $$
@@ -116,13 +127,19 @@ BEGIN
   DECLARE v_id BIGINT UNSIGNED;
   DECLARE v_closed TINYINT(1);
   DECLARE v_rates TINYINT(1);
+  DECLARE v_warn, v_crit INT;
+  DECLARE v_notify TINYINT(1);
   CALL sp_assert_actor(p_actor_id, p_tenant_id, 'rq.read');
   CALL sp_rq_resolve(p_tenant_id, p_uuid, v_id, v_closed);
   CALL sp_rq_can_rates(p_actor_id, v_rates);
+  CALL sp_rq_alert_days(p_tenant_id, v_warn, v_crit, v_notify);
   SELECT JSON_OBJECT(
            'id', r.uuid, 'code', r.code, 'title', r.title, 'description', r.description, 'version', r.version,
            'requestDate', r.request_date, 'dueDate', r.due_date, 'closed', v_closed = 1, 'canSeeRates', v_rates = 1,
            'createdAt', r.created_at, 'updatedAt', r.updated_at,
+           'alerts', JSON_OBJECT('warnDays', v_warn, 'criticalDays', v_crit,
+                       'lastMoveAt', (SELECT last_move_at FROM v_rq_activity WHERE requirement_id = r.id),
+                       'inProcess', (SELECT in_process FROM v_rq_activity WHERE requirement_id = r.id)),
            'client', JSON_OBJECT('id', c.uuid, 'label', c.label_i18n, 'ruc', c.str1, 'address', c.str2),
            'status', JSON_OBJECT('id', s.uuid, 'code', s.code, 'label', s.label_i18n, 'group', s.str1),
            'durationValue', r.duration_value, 'durationUnitId', du.uuid,
@@ -153,7 +170,7 @@ BEGIN
                         FROM requirement_vacancy v JOIN master_item p ON p.id = v.profile_item_id
                        WHERE v.requirement_id = r.id AND v.deleted_at IS NULL), JSON_ARRAY()),
            'candidates', IFNULL((SELECT JSON_ARRAYAGG(JSON_OBJECT('id', rc.uuid, 'vacancyId', v.uuid, 'boardOrder', rc.board_order, 'notes', rc.notes,
-                          'stage', JSON_OBJECT('id', cs.uuid, 'code', cs.code, 'label', cs.label_i18n), 'updatedAt', IFNULL(rc.updated_at, rc.created_at),
+                          'stage', JSON_OBJECT('id', cs.uuid, 'code', cs.code, 'label', cs.label_i18n), 'stageAt', rc.stage_at, 'updatedAt', IFNULL(rc.updated_at, rc.created_at),
                           'resignation', IF(rc.resigned_at IS NULL, NULL, JSON_OBJECT('at', rc.resigned_at, 'offboard', rc.offboard_status, 'offboardAt', rc.offboard_at)),
                           'docs', IFNULL((SELECT JSON_ARRAYAGG(JSON_OBJECT('typeId', rdt.uuid, 'mode', rd.mode,
                                      'status', IFNULL((SELECT IF(td.expires_at IS NOT NULL AND td.expires_at < CURDATE(), 'EXPIRED', td.status)
@@ -592,8 +609,8 @@ BEGIN
       SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:VACANCY_FULL';
     END IF;
   END IF;
-  UPDATE requirement_candidate SET stage_item_id = v_stage, vacancy_id = v_new_vac, board_order = IFNULL(p_board_order, board_order),
-         updated_by = p_actor_id WHERE id = v_id;
+  UPDATE requirement_candidate SET stage_at = IF(stage_item_id = v_stage, stage_at, NOW(3)), stage_item_id = v_stage,
+         vacancy_id = v_new_vac, board_order = IFNULL(p_board_order, board_order), updated_by = p_actor_id WHERE id = v_id;
   UPDATE requirement SET updated_by = p_actor_id, updated_at = NOW(3) WHERE id = v_rq;
   IF v_from <> v_to OR v_new_vac <> v_vac THEN
     INSERT INTO requirement_candidate_event (candidate_id, type, data, created_by)

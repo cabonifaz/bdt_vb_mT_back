@@ -32,7 +32,7 @@ type RQChange struct {
 	Client         string `json:"-"`
 }
 
-// BoardQuery: vista del tablero (ACTIVE, SOON, OVERDUE, NEW, CLOSED, ALL) y filtros; Today es la fecha local del usuario.
+// BoardQuery: vista del tablero (ACTIVE, SOON, OVERDUE, NEW, STALE, CLOSED, ALL) y filtros; Today es la fecha local del usuario.
 type BoardQuery struct {
 	Scope, Search, Today           string
 	ClientID, ContactID, ProfileID *string
@@ -47,6 +47,21 @@ type BoardCounts struct {
 	New     int `json:"new"`
 	Closed  int `json:"closed"`
 	All     int `json:"all"`
+	Stale   int `json:"stale"`
+}
+
+// RQAlertSettings: días sin movimiento para la alerta de atención y la crítica, y si se notifica.
+type RQAlertSettings struct {
+	WarnDays     int  `json:"warnDays"`
+	CriticalDays int  `json:"criticalDays"`
+	Notify       bool `json:"notify"`
+}
+
+// StaleRQ: RQ que subió de nivel de alerta por falta de movimiento (1 atención, 2 crítico).
+type StaleRQ struct {
+	TenantID                            uint64
+	TenantSlug, ID, Code, Title, Client string
+	Level, Days                         int
 }
 
 type ContactWrite struct {
@@ -67,4 +82,8 @@ type RequirementRepository interface {
 	Contacts(ctx context.Context, m Meta, tenantID uint64, clientID string) ([]json.RawMessage, error)
 	ContactSave(ctx context.Context, m Meta, tenantID uint64, c ContactWrite) error
 	ContactDelete(ctx context.Context, m Meta, tenantID uint64, id string) error
+	AlertSettings(ctx context.Context, m Meta, tenantID uint64) (json.RawMessage, error)
+	SaveAlertSettings(ctx context.Context, m Meta, tenantID uint64, s RQAlertSettings) error
+	// StaleScan recalcula el nivel de alerta de todos los RQ y devuelve los que subieron de nivel.
+	StaleScan(ctx context.Context, today string) ([]StaleRQ, error)
 }

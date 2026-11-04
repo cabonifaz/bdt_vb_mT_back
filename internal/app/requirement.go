@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"log/slog"
 	"regexp"
 	"strings"
 	"time"
@@ -22,9 +23,12 @@ type RequirementService struct {
 	Notifier RQNotifier
 }
 
-// RQNotifier avisa a los usuarios del tenant cuando se crea o cambia un RQ.
+// RQNotifier avisa a los usuarios del tenant cuando se crea o cambia un RQ, y al equipo del RQ cuando lleva
+// días sin movimiento de postulantes.
 type RQNotifier interface {
 	RQChanged(ctx context.Context, p *domain.Principal, c *ports.RQChange)
+	RQStale(ctx context.Context, r ports.StaleRQ)
+	RQStaleSummary(ctx context.Context, list []ports.StaleRQ)
 }
 
 // RQDocInput: documento que se pide a los postulantes del RQ. Documents nil = sin cambios.
@@ -224,7 +228,7 @@ type BoardResult struct {
 	Counts ports.BoardCounts `json:"counts"`
 }
 
-var boardScopes = map[string]bool{"ACTIVE": true, "SOON": true, "OVERDUE": true, "NEW": true, "CLOSED": true, "ALL": true}
+var boardScopes = map[string]bool{"ACTIVE": true, "SOON": true, "OVERDUE": true, "NEW": true, "STALE": true, "CLOSED": true, "ALL": true}
 
 // Board: tarjetas del tablero según la vista y los filtros.
 func (s *RequirementService) Board(ctx context.Context, p *domain.Principal, f BoardFilter) (*BoardResult, error) {
@@ -461,4 +465,78 @@ func (s *RequirementService) DeleteContact(ctx context.Context, p *domain.Princi
 		return domain.ErrNotFound
 	}
 	return s.Repo.ContactDelete(ctx, meta(p, ip), tid, id)
+}
+
+// AlertSettings: días sin movimiento para las alertas del tenant (atención y crítica) y si se notifica.
+func (s *RequirementService) AlertSettings(ctx context.Context, p *domain.Principal) (json.RawMessage, error) {
+	tid, err := tenantOf(p)
+	if err != nil {
+		return nil, err
+	}
+	return s.Repo.AlertSettings(ctx, meta(p, ""), tid)
+}
+
+func (s *RequirementService) SaveAlertSettings(ctx context.Context, p *domain.Principal, ip string, in ports.RQAlertSettings) error {
+	tid, err := tenantOf(p)
+	if err != nil {
+		return err
+	}
+	if in.WarnDays < 1 || in.WarnDays > 90 || in.CriticalDays < 2 || in.CriticalDays > 180 || in.CriticalDays <= in.WarnDays {
+		return domain.ErrValidation
+	}
+	return s.Repo.SaveAlertSettings(ctx, meta(p, ip), tid, in)
+}
+
+// staleSummaryOver: más RQ que esto en un mismo barrido se avisan en un solo resumen (evita inundar la bandeja).
+const staleSummaryOver = 3
+
+// ScanStale: recalcula las alertas de RQ sin movimiento y avisa al equipo de los que subieron de nivel.
+// today es la fecha local de la plataforma.
+func (s *RequirementService) ScanStale(ctx context.Context, today time.Time) (int, error) {
+	list, err := s.Repo.StaleScan(ctx, today.Format("2006-01-02"))
+	if err != nil {
+		return 0, err
+	}
+	if s.Notifier == nil {
+		return len(list), nil
+	}
+	// por empresa: hasta staleSummaryOver RQ se avisa uno por uno; si son más, un solo aviso con el resumen
+	byTenant := map[uint64][]ports.StaleRQ{}
+	order := []uint64{}
+	for _, r := range list {
+		if _, ok := byTenant[r.TenantID]; !ok {
+			order = append(order, r.TenantID)
+		}
+		byTenant[r.TenantID] = append(byTenant[r.TenantID], r)
+	}
+	for _, tid := range order {
+		group := byTenant[tid]
+		if len(group) > staleSummaryOver {
+			s.Notifier.RQStaleSummary(ctx, group)
+			continue
+		}
+		for _, r := range group {
+			s.Notifier.RQStale(ctx, r)
+		}
+	}
+	return len(list), nil
+}
+
+// WatchStale: corre el barrido al iniciar (tras un minuto) y luego cada `every`, hasta que se cancele ctx.
+func (s *RequirementService) WatchStale(ctx context.Context, every time.Duration, tz *time.Location) {
+	timer := time.NewTimer(time.Minute)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+		}
+		if n, err := s.ScanStale(ctx, time.Now().In(tz)); err != nil {
+			slog.Warn("no se pudo revisar los RQ sin movimiento", "err", err)
+		} else if n > 0 {
+			slog.Info("RQ sin movimiento notificados", "count", n)
+		}
+		timer.Reset(every)
+	}
 }

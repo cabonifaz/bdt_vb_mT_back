@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/app/ports"
@@ -78,7 +79,7 @@ func (r RequirementRepo) Board(ctx context.Context, m ports.Meta, tenantID uint6
 		return nil, n, err
 	}
 	if rs.Next() {
-		if err := rs.One(&n.Active, &n.Soon, &n.Overdue, &n.New, &n.Closed, &n.All); err != nil {
+		if err := rs.One(&n.Active, &n.Soon, &n.Overdue, &n.New, &n.Closed, &n.All, &n.Stale); err != nil {
 			return nil, n, err
 		}
 	}
@@ -201,4 +202,46 @@ func (r RequirementRepo) ContactSave(ctx context.Context, m ports.Meta, tenantID
 
 func (r RequirementRepo) ContactDelete(ctx context.Context, m ports.Meta, tenantID uint64, id string) error {
 	return r.exec(ctx, "sp_client_contact_delete", m.ActorID, tenantID, id, nullStr(m.IP))
+}
+
+func (r RequirementRepo) AlertSettings(ctx context.Context, m ports.Meta, tenantID uint64) (json.RawMessage, error) {
+	rs, err := r.call(ctx, "sp_rq_alert_get", m.ActorID, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rs.Close()
+	var doc []byte
+	if rs.Next() {
+		if err := rs.One(&doc); err != nil {
+			return nil, err
+		}
+	}
+	return doc, nil
+}
+
+func (r RequirementRepo) SaveAlertSettings(ctx context.Context, m ports.Meta, tenantID uint64, s ports.RQAlertSettings) error {
+	return r.exec(ctx, "sp_rq_alert_save", m.ActorID, tenantID, s.WarnDays, s.CriticalDays, s.Notify, nullStr(m.IP))
+}
+
+func (r RequirementRepo) StaleScan(ctx context.Context, today string) ([]ports.StaleRQ, error) {
+	rs, err := r.call(ctx, "sp_rq_stale_scan", today)
+	if err != nil {
+		return nil, err
+	}
+	defer rs.Close()
+	out := []ports.StaleRQ{}
+	if !rs.Next() {
+		return out, nil
+	}
+	err = rs.Each(func(scan func(...any) error) error {
+		var x ports.StaleRQ
+		var client sql.NullString
+		if err := scan(&x.TenantID, &x.TenantSlug, &x.ID, &x.Code, &x.Title, &client, &x.Level, &x.Days); err != nil {
+			return err
+		}
+		x.Client = client.String
+		out = append(out, x)
+		return nil
+	})
+	return out, err
 }

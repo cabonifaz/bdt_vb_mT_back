@@ -72,6 +72,9 @@ func Build(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, erro
 	versions := &app.VersionService{Repo: mysql.VersionRepo{Store: store}, Notifier: notifications, Env: cfg.Env,
 		Version: release.Version(), Commit: cfg.CommitSHA, Notes: release.Notes(release.Version()), Peers: app.ParsePeers(cfg.EnvURLs)}
 	go versions.Register(context.Background())
+	// alertas de RQ sin movimiento: barrido cada hora (avisa a los responsables y jefes de selección)
+	requirements := &app.RequirementService{Repo: mysql.RequirementRepo{Store: store}, Cipher: cipher, Notifier: notifications}
+	go requirements.WatchStale(ctx, time.Hour, tz)
 	talents := &app.TalentService{Repo: mysql.TalentRepo{Store: store}, Cipher: cipher, Storage: files,
 		Translator: openAI, Reader: openAI, Usage: usageRepo, Notifier: notifications}
 	srv := httpapi.NewServer(httpapi.Config{CORSOrigins: cfg.CORSOrigins, TrustProxy: cfg.TrustProxy,
@@ -84,7 +87,7 @@ func Build(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, erro
 		Files:         &app.FileService{Repo: fileRepo, Storage: files, Tenants: tenantRepo},
 		Talents:       talents,
 		Notifications: notifications,
-		Requirements:  &app.RequirementService{Repo: mysql.RequirementRepo{Store: store}, Cipher: cipher, Notifier: notifications},
+		Requirements:  requirements,
 		// CUL: se verifica en el servicio público del MTPE con el RUC del tenant
 		Features:   features,
 		Versions:   versions,

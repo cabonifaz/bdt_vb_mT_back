@@ -86,6 +86,14 @@ BEGIN
            WHEN 'ALL' THEN 1
            WHEN 'TENANT_ROLES' THEN u.tenant_id = p_tenant_id AND EXISTS (SELECT 1 FROM user_role ur JOIN role ro ON ro.id = ur.role_id
                                      WHERE ur.user_id = u.id AND JSON_CONTAINS(p_roles, JSON_QUOTE(ro.code)))
+           -- responsables vigentes del RQ (p_entity_uuid, o de los RQ en p_payload.rqIds) y los usuarios del tenant con los roles indicados
+           WHEN 'RQ_TEAM' THEN u.tenant_id = p_tenant_id AND (
+                                 EXISTS (SELECT 1 FROM requirement_owner ow JOIN requirement rq ON rq.id = ow.requirement_id
+                                          WHERE ow.user_id = u.id AND ow.unassigned_at IS NULL
+                                            AND (rq.uuid = p_entity_uuid
+                                                 OR JSON_CONTAINS(IFNULL(JSON_EXTRACT(p_payload, '$.rqIds'), JSON_ARRAY()), JSON_QUOTE(rq.uuid))))
+                                 OR EXISTS (SELECT 1 FROM user_role ur JOIN role ro ON ro.id = ur.role_id
+                                             WHERE ur.user_id = u.id AND JSON_CONTAINS(IFNULL(p_roles, JSON_ARRAY()), JSON_QUOTE(ro.code))))
            ELSE 0
          END
      AND NOT EXISTS (SELECT 1 FROM notification_pref np WHERE np.user_id = u.id AND np.type = p_type AND np.in_app = 0);
