@@ -3,6 +3,10 @@
 Formato: `## vMAYOR.MENOR — AAAA-MM-DD`, seguido de los cambios en viñetas (español). Al publicar una versión se
 sube `VERSION` y se agrega su sección aquí: la API la registra al desplegarse en cada ambiente y la notifica.
 
+## v1.2 — 2026-11-04
+- Indicadores de selección para el jefe de selección y el administrador: vencidos con y sin postulantes, postulantes, entrevistas, horas y días por ingreso, tiempo hasta cerrar, cierres a tiempo, altas y reuniones por analista (semanas o meses), embudo, postulantes en varios procesos, clientes y perfiles.
+- Las alertas de RQ sin movimiento se cuentan en días hábiles (lunes a viernes).
+
 ## v1.1 — 2026-11-04
 - Alertas de RQ sin movimiento: vista «Sin movimiento» en el tablero, etiqueta en la tarjeta, aviso en la ficha y días en etapa de cada postulante.
 - Notificación a los responsables del RQ y a los jefes de selección (resumen si son varios); días configurables por empresa.
