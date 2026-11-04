@@ -3,6 +3,11 @@
 Formato: `## vMAYOR.MENOR — AAAA-MM-DD`, seguido de los cambios en viñetas (español). Al publicar una versión se
 sube `VERSION` y se agrega su sección aquí: la API la registra al desplegarse en cada ambiente y la notifica.
 
+## v1.1 — 2026-11-04
+- Alertas de RQ sin movimiento: vista «Sin movimiento» en el tablero, etiqueta en la tarjeta, aviso en la ficha y días en etapa de cada postulante.
+- Notificación a los responsables del RQ y a los jefes de selección (resumen si son varios); días configurables por empresa.
+- Las guías paso a paso ya no se superponen con la pantalla y la versión se ve completa bajo el logo.
+
 ## v1.0 — 2026-11-02
 - Banco de talentos multiempresa con búsqueda, filtros, ficha y CV con la marca de la empresa.
 - Carga rápida y relectura de CV con IA (años por tecnología) y consulta de DNI, sin talentos duplicados.
