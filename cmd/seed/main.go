@@ -50,6 +50,7 @@ type env struct {
 	docs     *app.DocumentService // sin verificador: los resultados del CUL de prueba se registran simulados
 	docRepo  mysql.DocumentRepo
 	workers  int
+	knownPwd map[string]string // claves del archivo de credenciales: al regenerar, cada usuario conserva la suya
 	errCount atomic.Int64
 	rnd      *mrand.Rand
 	mu       sync.Mutex // protege rnd
@@ -63,6 +64,7 @@ func main() {
 	apiURL := flag.String("api", "https://bdtvbmtback-staging.up.railway.app", "API del ambiente donde se suben los archivos (-scenarios)")
 	extraRQs := flag.Int("extra-rqs", 40, "RQ adicionales por tenant (-scenarios)")
 	fractalRUC := flag.String("fractal-ruc", "", "RUC real con el que Fractal verifica el CUL en el MTPE (-scenarios); los RUC de prueba de los demás tenants se quitan")
+	timeline := flag.Bool("timeline", false, "reescribir la historia de los RQ (últimos 9 meses): fechas de alta, etapas, cierres, reaperturas y entrevistas ligadas al RQ")
 	leads := flag.Bool("leads", false, "agregar el jefe de selección a los tenants ya generados (sus claves se añaden a -creds)")
 	keepAdmin := flag.String("keep-admin", "", "correo del admin de Fractal que se conserva")
 	creds := flag.String("creds", "../_secrets/seed_users.env", "archivo (fuera del repo) donde se guardan las credenciales generadas")
@@ -120,6 +122,7 @@ func main() {
 		docRepo: mysql.DocumentRepo{Store: store},
 	}
 
+	e.knownPwd = knownPasswords(*creds)
 	if *reset {
 		if *keepAdmin == "" {
 			fail(fmt.Errorf("-reset requiere -keep-admin"))
@@ -200,6 +203,18 @@ func main() {
 			fmt.Printf("%-18s escenarios listos en %s (errores acumulados: %d)\n", spec.Slug, time.Since(t0).Round(time.Second), e.errCount.Load())
 		}
 		fmt.Printf("escenarios completos en %s\n", time.Since(start).Round(time.Second))
+	}
+	if *timeline {
+		for _, spec := range tenants {
+			if *only != "" && spec.Slug != *only {
+				continue
+			}
+			t0 := time.Now()
+			if err := e.timeline(ctx, spec); err != nil {
+				fail(fmt.Errorf("%s: %w", spec.Slug, err))
+			}
+			fmt.Printf("%-18s historia lista en %s\n", spec.Slug, time.Since(t0).Round(time.Second))
+		}
 	}
 	if *seed {
 		start := time.Now()
@@ -282,6 +297,10 @@ func (e *env) reset(ctx context.Context, keepEmail string) error {
 	stmts := []string{
 		"SET FOREIGN_KEY_CHECKS = 0",
 		"DELETE FROM notification_recipient", "DELETE FROM notification", "DELETE FROM push_subscription", "DELETE FROM notification_pref",
+		"DELETE FROM requirement_candidate_event", "DELETE FROM talent_document", "DELETE FROM requirement_document", "DELETE FROM document_rule",
+		"DELETE FROM requirement_owner", "DELETE FROM requirement_reopen", "DELETE FROM rq_alert_setting", "DELETE FROM tenant_feature",
+		"DELETE FROM support_attachment", "DELETE FROM support_message", "DELETE FROM support_ticket",
+		"DELETE FROM user_tour WHERE user_id NOT IN " + keepUsers,
 		"DELETE FROM requirement_candidate", "DELETE FROM vacancy_career", "DELETE FROM vacancy_skill", "DELETE FROM requirement_vacancy",
 		"DELETE FROM requirement_billing", "DELETE FROM requirement_contact", "DELETE FROM interview_answer", "DELETE FROM interview_recording",
 		"DELETE FROM interview_interviewer", "DELETE FROM interview", "DELETE FROM requirement", "DELETE FROM requirement_sequence", "DELETE FROM client_contact",
@@ -359,6 +378,14 @@ func (e *env) parallel(n int, f func(i int)) {
 		}(i)
 	}
 	wg.Wait()
+}
+
+// passwordFor: la clave que el usuario ya tenía (archivo de credenciales) o una nueva.
+func (e *env) passwordFor(email string) string {
+	if p := e.knownPwd[strings.ToLower(email)]; p != "" {
+		return p
+	}
+	return password()
 }
 
 func password() string {

@@ -1,7 +1,7 @@
 -- =====================================================================
 -- Alertas de RQ sin movimiento: umbrales por tenant y barrido periódico.
 -- Un RQ abierto con postulantes en proceso está "sin movimiento" cuando ningún postulante cambió de etapa
--- (ni se agregó uno, ni se reabrió el RQ) en los días de atención; pasados los días críticos, la alerta es crítica.
+-- (ni se agregó uno, ni se reabrió el RQ) en los días hábiles (lunes a viernes) de atención; pasados los críticos, es crítica.
 -- =====================================================================
 DELIMITER $$
 
@@ -56,8 +56,7 @@ BEGIN
                    AND EXISTS (SELECT 1 FROM feature f LEFT JOIN tenant_feature tf ON tf.feature_id = f.id AND tf.tenant_id = r.tenant_id
                                 WHERE f.code = 'rq_stale_alerts' AND f.status = 'ACTIVE' AND IFNULL(tf.enabled, f.default_enabled) = 1) AS notify,
                  IF(s.str1 = 'OPEN' AND act.in_process > 0,
-                    DATEDIFF(IFNULL(DATE(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', t.timezone)), p_today),
-                             DATE(IFNULL(CONVERT_TZ(act.last_move_at, '+00:00', t.timezone), act.last_move_at))), NULL) AS idle
+                    (5 * (DATEDIFF(IFNULL(DATE(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', t.timezone)), p_today), '2000-12-31') DIV 7) + LEAST(DATEDIFF(IFNULL(DATE(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', t.timezone)), p_today), '2000-12-31') MOD 7, 5)) - (5 * (DATEDIFF(act.last_move_day, '2000-12-31') DIV 7) + LEAST(DATEDIFF(act.last_move_day, '2000-12-31') MOD 7, 5)), NULL) AS idle
             FROM requirement r
             JOIN tenant t ON t.id = r.tenant_id AND t.deleted_at IS NULL
             JOIN master_item s ON s.id = r.status_item_id

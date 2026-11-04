@@ -138,6 +138,11 @@ BEGIN
            notes_education = p_n_education, cancel_reason = p_cancel_reason, version = version + 1, updated_by = p_actor_id
      WHERE id = v_id;
   END IF;
+  -- vínculo con el RQ por su código (para los indicadores: entrevistas y horas por ingreso)
+  UPDATE interview iv
+     SET iv.requirement_id = (SELECT r.id FROM requirement r WHERE r.tenant_id = p_tenant_id AND r.code = iv.requirement_ref AND r.deleted_at IS NULL LIMIT 1),
+         iv.updated_at = iv.updated_at
+   WHERE iv.id = v_id;
   DELETE FROM interview_interviewer WHERE interview_id = v_id;
   INSERT INTO interview_interviewer (interview_id, full_name, email_enc, notify, sort_order)
   SELECT v_id, TRIM(j.name), IF(IFNULL(j.email, '') = '', NULL, UNHEX(j.email)), IFNULL(j.notify, 0), j.ord

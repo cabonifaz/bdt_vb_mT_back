@@ -35,6 +35,7 @@ type Deps struct {
 	Usage         *app.UsageService
 	Notifications *app.NotificationService
 	Requirements  *app.RequirementService
+	Dashboard     *app.DashboardService
 	Documents     *app.DocumentService
 	Features      *app.FeatureService
 	Versions      *app.VersionService
@@ -113,6 +114,7 @@ func (s *Server) Handler() http.Handler {
 				r.With(s.requirePerm("tenant.translations.manage")).Put("/translations", s.upsertTranslation)
 				r.With(s.requirePerm("tenant.audit.read")).Get("/audit", s.listAudit)
 				r.With(s.requirePerm("talent.read")).Get("/home", s.homeSummary)
+				r.With(s.requirePerm("dashboard.selection"), s.requireFeature("selection_dashboard")).Post("/dashboard/selection", s.dashboardSelection)
 				r.With(s.requirePerm("talent.write"), s.requireFeature("dni_lookup")).Get("/identity/dni/{dni}", s.lookupDNI)
 				r.Group(s.notificationRoutes)
 				r.With(s.requireFeature("requirements")).Group(s.requirementRoutes)

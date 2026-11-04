@@ -66,7 +66,7 @@ func (e *env) seedTenant(ctx context.Context, spec TenantSpec, keepAdmin string)
 		}
 		tid = t.ID
 		name := e.personName()
-		pwd := password()
+		pwd := e.passwordFor(email)
 		p, err := e.accept(ctx, inv, name, pwd)
 		if err != nil {
 			return nil, fmt.Errorf("admin: %w", err)
@@ -87,7 +87,7 @@ func (e *env) seedTenant(ctx context.Context, spec TenantSpec, keepAdmin string)
 			if e.fails("invitar "+email, err) {
 				continue
 			}
-			name, pwd := e.personName(), password()
+			name, pwd := e.personName(), e.passwordFor(email)
 			p, err := e.accept(ctx, inv, name, pwd)
 			if e.fails("aceptar "+email, err) {
 				continue
@@ -196,7 +196,7 @@ func (e *env) seedTenant(ctx context.Context, spec TenantSpec, keepAdmin string)
 		e.fails("lista negra", err)
 	}
 
-	e.genRQs(ctx, spec, spec.RQs, rqDeps{m: m, skillID: skillID, clientIDs: clientIDs, contacts: contacts, analysts: analysts, writers: writers,
+	e.genRQs(ctx, spec, spec.RQs, rqDeps{m: m, skillID: skillID, clientIDs: clientIDs, contacts: contacts, analysts: append(append([]user{}, analysts...), leads...), writers: writers,
 		byProfile: byProfile, all: all})
 	return creds, nil
 }
@@ -744,9 +744,10 @@ func (e *env) loadDeps(ctx context.Context, spec TenantSpec, tid uint64) (rqDeps
 			rows.Close()
 			return d, err
 		}
-		if role == "RECRUITER" {
+		if role == "RECRUITER" || role == "SELECTION_LEAD" { // el jefe también lleva RQ
 			d.analysts = append(d.analysts, user{p, p.FullName})
-		} else if role == "TENANT_ADMIN" || role == "SELECTION_LEAD" || role == "COMMERCIAL" {
+		}
+		if role == "TENANT_ADMIN" || role == "SELECTION_LEAD" || role == "COMMERCIAL" {
 			d.writers = append(d.writers, user{p, p.FullName})
 		}
 	}

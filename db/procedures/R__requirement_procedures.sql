@@ -27,7 +27,7 @@ END $$
 --   ACTIVE  = abiertos sin vencer (por defecto)      SOON   = abiertos que vencen entre hoy y los próximos 3 días
 --   OVERDUE = abiertos vencidos                      NEW    = abiertos registrados en los últimos 7 días
 --   CLOSED  = cerrados (cualquier motivo)            ALL    = todo
---   STALE   = abiertos sin movimiento: con postulantes en proceso y ninguno cambió de etapa en los días de atención
+--   STALE   = abiertos sin movimiento: con postulantes en proceso y ninguno cambió de etapa en los días hábiles de atención
 -- p_today es la fecha local del usuario (define "vencido"). Filtros opcionales: texto (código, título, cliente,
 -- contacto o perfil), cliente, contacto del cliente, perfil y solo los míos.
 -- Segundo result set: cantidad por vista con los mismos filtros (contadores de las pestañas del tablero).
@@ -42,7 +42,7 @@ BEGIN
   DECLARE v_tz VARCHAR(60);
   CALL sp_assert_actor(p_actor_id, p_tenant_id, 'rq.read');
   CALL sp_rq_alert_days(p_tenant_id, v_warn, v_crit, v_notify);
-  -- los movimientos se guardan en UTC; los días sin movimiento se cuentan con la fecha local del tenant
+  -- los movimientos se guardan en UTC; los días hábiles sin movimiento se cuentan con la fecha local del tenant
   SELECT timezone INTO v_tz FROM tenant WHERE id = p_tenant_id;
   SET v_search = IF(p_search IS NULL OR TRIM(p_search) = '', NULL, CONCAT('%', LOWER(TRIM(p_search)), '%'));
 
@@ -50,7 +50,7 @@ BEGIN
   DROP TEMPORARY TABLE IF EXISTS tmp_rq_board;
   CREATE TEMPORARY TABLE tmp_rq_board (id BIGINT UNSIGNED PRIMARY KEY, is_open TINYINT(1), due DATE, created DATE, idle INT NULL) ENGINE=MEMORY;
   INSERT INTO tmp_rq_board
-  SELECT r.id, s.str1 = 'OPEN', r.due_date, DATE(r.created_at), IF(s.str1 = 'OPEN' AND act.in_process > 0, DATEDIFF(p_today, DATE(IFNULL(CONVERT_TZ(act.last_move_at, '+00:00', v_tz), act.last_move_at))), NULL)
+  SELECT r.id, s.str1 = 'OPEN', r.due_date, DATE(r.created_at), IF(s.str1 = 'OPEN' AND act.in_process > 0, (5 * (DATEDIFF(p_today, '2000-12-31') DIV 7) + LEAST(DATEDIFF(p_today, '2000-12-31') MOD 7, 5)) - (5 * (DATEDIFF(act.last_move_day, '2000-12-31') DIV 7) + LEAST(DATEDIFF(act.last_move_day, '2000-12-31') MOD 7, 5)), NULL)
     FROM requirement r
     JOIN master_item s ON s.id = r.status_item_id
     JOIN v_rq_activity act ON act.requirement_id = r.id
@@ -93,7 +93,7 @@ BEGIN
            'stale', IF(f.idle >= v_warn, JSON_OBJECT('level', IF(f.idle >= v_crit, 2, 1), 'days', f.idle,
                           'candidates', (SELECT COUNT(*) FROM requirement_candidate rc JOIN master_item cs ON cs.id = rc.stage_item_id
                                           WHERE rc.requirement_id = r.id AND rc.deleted_at IS NULL AND rc.resigned_at IS NULL
-                                            AND cs.code <> 'CONFIRMED' AND DATEDIFF(p_today, DATE(IFNULL(CONVERT_TZ(rc.stage_at, '+00:00', v_tz), rc.stage_at))) >= v_warn)), NULL)
+                                            AND cs.code <> 'CONFIRMED' AND (5 * (DATEDIFF(p_today, '2000-12-31') DIV 7) + LEAST(DATEDIFF(p_today, '2000-12-31') MOD 7, 5)) - (5 * (DATEDIFF(DATE(IFNULL(CONVERT_TZ(rc.stage_at, '+00:00', v_tz), rc.stage_at)), '2000-12-31') DIV 7) + LEAST(DATEDIFF(DATE(IFNULL(CONVERT_TZ(rc.stage_at, '+00:00', v_tz), rc.stage_at)), '2000-12-31') MOD 7, 5)) >= v_warn)), NULL)
          ) AS doc
     FROM tmp_rq_board f
     JOIN requirement r ON r.id = f.id
@@ -311,6 +311,10 @@ BEGIN
      WHERE id = v_id;
     SET v_version = v_version + 1;
   END IF;
+  -- fecha de cierre según el estado guardado
+  UPDATE requirement r JOIN master_item s ON s.id = r.status_item_id
+     SET r.closed_at = IF(s.str1 = 'CLOSED', IFNULL(r.closed_at, NOW(3)), NULL), r.updated_at = r.updated_at
+   WHERE r.id = v_id;
 
   -- responsables: se cierra la asignación de quien sale y se abre la de quien entra (historial para indicadores)
   IF p_owners IS NOT NULL THEN
@@ -451,6 +455,10 @@ BEGIN
   UPDATE requirement SET status_item_id = v_status, board_order = IFNULL(p_board_order, board_order),
          version = version + IF(status_item_id = v_status, 0, 1), updated_by = p_actor_id
    WHERE id = v_id;
+  -- fecha de cierre: se fija al pasar a un estado de cierre (se conserva entre motivos) y se borra al reabrir
+  UPDATE requirement r JOIN master_item s ON s.id = r.status_item_id
+     SET r.closed_at = IF(s.str1 = 'CLOSED', IFNULL(r.closed_at, NOW(3)), NULL), r.updated_at = r.updated_at
+   WHERE r.id = v_id;
   IF v_old <> v_new THEN
     CALL sp_audit_insert(p_tenant_id, p_actor_id, NULL, 'STATUS', 'requirement', p_uuid, JSON_OBJECT('from', v_old, 'to', v_new), p_ip);
   END IF;
@@ -502,7 +510,7 @@ BEGIN
   SELECT r.status_item_id, s.code INTO v_from, v_old FROM requirement r JOIN master_item s ON s.id = r.status_item_id WHERE r.id = v_id;
   SELECT code INTO v_new FROM master_item WHERE id = v_status;
   START TRANSACTION;
-  UPDATE requirement SET status_item_id = v_status, version = version + 1, updated_by = p_actor_id WHERE id = v_id;
+  UPDATE requirement SET status_item_id = v_status, version = version + 1, updated_by = p_actor_id, closed_at = NULL WHERE id = v_id;
   INSERT INTO requirement_reopen (requirement_id, reason, notes, from_status_id, to_status_id, created_by)
   VALUES (v_id, p_reason, NULLIF(TRIM(p_notes), ''), v_from, v_status, p_actor_id);
   SET v_reopen = LAST_INSERT_ID();

@@ -91,6 +91,7 @@ func Build(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, erro
 		Talents:       talents,
 		Notifications: notifications,
 		Requirements:  requirements,
+		Dashboard:     &app.DashboardService{Repo: mysql.DashboardRepo{Store: store}, Cipher: cipher},
 		// CUL: se verifica en el servicio público del MTPE con el RUC del tenant
 		Features:   features,
 		Versions:   versions,
