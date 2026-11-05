@@ -3,6 +3,10 @@
 Formato: `## vMAYOR.MENOR — AAAA-MM-DD`, seguido de los cambios en viñetas (español). Al publicar una versión se
 sube `VERSION` y se agrega su sección aquí: la API la registra al desplegarse en cada ambiente y la notifica.
 
+## v1.3 — 2026-11-05
+- Integración con IGDT, el maestro único de catálogos: con la empresa conectada, clientes y contactos, perfiles, tarifario, modalidades, monedas, plazos, áreas y motivos se administran en IGDT y llegan solos a BDT.
+- Al crear una vacante se propone la tarifa del tarifario de IGDT.
+
 ## v1.2 — 2026-11-04
 - Indicadores de selección para el jefe de selección y el administrador: vencidos con y sin postulantes, postulantes, entrevistas, horas y días por ingreso, tiempo hasta cerrar, cierres a tiempo, altas y reuniones por analista (semanas o meses), embudo, postulantes en varios procesos, clientes y perfiles.
 - Las alertas de RQ sin movimiento se cuentan en días hábiles (lunes a viernes).
