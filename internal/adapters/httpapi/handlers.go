@@ -165,6 +165,10 @@ func (s *Server) featuresOf(ctx context.Context, p *domain.Principal) []string {
 	for c := range set {
 		out = append(out, c)
 	}
+	// marca de la integración con IGDT: los catálogos compartidos son de solo lectura en la app
+	if s.IGDT != nil && s.IGDT.Active(ctx, *p.TenantID) {
+		out = append(out, "igdt_catalogs")
+	}
 	sort.Strings(out)
 	return out
 }

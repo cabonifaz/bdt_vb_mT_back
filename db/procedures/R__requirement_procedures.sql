@@ -696,6 +696,7 @@ CREATE PROCEDURE sp_client_contact_save(IN p_actor_id BIGINT UNSIGNED, IN p_tena
 BEGIN
   DECLARE v_client BIGINT UNSIGNED;
   CALL sp_assert_actor(p_actor_id, p_tenant_id, 'rq.write');
+  CALL sp_igdt_assert_editable(p_tenant_id, 'CLIENT'); -- contactos: los gobierna IGDT si hay integración
   CALL sp_master_resolve(p_tenant_id, 'CLIENT', p_client_uuid, v_client);
   IF v_client IS NULL OR TRIM(IFNULL(p_first, '')) = '' OR TRIM(IFNULL(p_last, '')) = '' THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:VALIDATION';
@@ -715,6 +716,7 @@ DROP PROCEDURE IF EXISTS sp_client_contact_delete $$
 CREATE PROCEDURE sp_client_contact_delete(IN p_actor_id BIGINT UNSIGNED, IN p_tenant_id BIGINT UNSIGNED, IN p_uuid CHAR(36), IN p_ip VARCHAR(45))
 BEGIN
   CALL sp_assert_actor(p_actor_id, p_tenant_id, 'rq.write');
+  CALL sp_igdt_assert_editable(p_tenant_id, 'CLIENT');
   UPDATE client_contact SET deleted_at = NOW(3) WHERE uuid = p_uuid AND tenant_id = p_tenant_id AND deleted_at IS NULL;
   IF ROW_COUNT() = 0 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:NOT_FOUND'; END IF;
   CALL sp_audit_insert(p_tenant_id, p_actor_id, NULL, 'DELETE', 'client_contact', p_uuid, NULL, p_ip);

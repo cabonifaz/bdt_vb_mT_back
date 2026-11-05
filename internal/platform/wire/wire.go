@@ -11,6 +11,7 @@ import (
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/adapters/cul"
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/adapters/httpapi"
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/adapters/identity"
+	"github.com/cabonifaz/bdt_vb_mT_back/internal/adapters/igdt"
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/adapters/mailer"
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/adapters/mysql"
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/adapters/push"
@@ -78,6 +79,12 @@ func Build(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, erro
 	if !cfg.IsLocal() {
 		go requirements.WatchStale(ctx, time.Hour, tz)
 	}
+	// IGDT gobierna los catálogos compartidos: sincronización cada 5 minutos de los tenants conectados (en local no,
+	// comparte la BD de staging)
+	igdtSvc := &app.IGDTService{Repo: mysql.IGDTRepo{Store: store}, Client: igdt.New(cfg.IGDTAPIURL), Cipher: cipher}
+	if !cfg.IsLocal() {
+		go igdtSvc.Watch(ctx, 5*time.Minute)
+	}
 	talents := &app.TalentService{Repo: mysql.TalentRepo{Store: store}, Cipher: cipher, Storage: files,
 		Translator: openAI, Reader: openAI, Usage: usageRepo, Notifier: notifications}
 	srv := httpapi.NewServer(httpapi.Config{CORSOrigins: cfg.CORSOrigins, TrustProxy: cfg.TrustProxy,
@@ -91,6 +98,7 @@ func Build(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, erro
 		Talents:       talents,
 		Notifications: notifications,
 		Requirements:  requirements,
+		IGDT:          igdtSvc,
 		Dashboard:     &app.DashboardService{Repo: mysql.DashboardRepo{Store: store}, Cipher: cipher},
 		// CUL: se verifica en el servicio público del MTPE con el RUC del tenant
 		Features:   features,

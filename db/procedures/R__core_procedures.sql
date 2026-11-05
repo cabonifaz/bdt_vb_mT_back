@@ -661,6 +661,8 @@ BEGIN
   ELSE
     CALL sp_assert_actor(p_actor_id, p_tenant_id, 'tenant.masters.manage');
     IF v_scope = 'GLOBAL' OR v_system = 1 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:MASTER_SCOPE'; END IF;
+    -- con la integración IGDT activa, los catálogos compartidos solo se administran en IGDT
+    CALL sp_igdt_assert_editable(p_tenant_id, p_table_code);
   END IF;
   IF JSON_TYPE(JSON_EXTRACT(p_label_i18n, '$.es')) IS NULL THEN
     SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:LABEL_ES_REQUIRED';

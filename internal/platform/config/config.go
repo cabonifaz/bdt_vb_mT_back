@@ -40,6 +40,8 @@ type Config struct {
 	OpenAIKey, OpenAIModel string
 	// EnvURLs: API de cada ambiente para comparar versiones ("staging=https://...,preprod=https://...,production=https://...")
 	EnvURLs string
+	// IGDTAPIURL: API de IGDT del ambiente (catálogos compartidos); sin ella la integración no está disponible
+	IGDTAPIURL string
 	// CommitSHA: commit desplegado (Railway lo entrega en RAILWAY_GIT_COMMIT_SHA)
 	CommitSHA string
 
@@ -75,6 +77,7 @@ func Load() (Config, error) {
 		DNIToken:          os.Getenv("DNI_API_TOKEN"),
 		DNIURL:            os.Getenv("DNI_API_URL"),
 		EnvURLs:           os.Getenv("ENV_URLS"),
+		IGDTAPIURL:        os.Getenv("IGDT_API_URL"),
 		CommitSHA:         os.Getenv("RAILWAY_GIT_COMMIT_SHA"),
 		OpenAIKey:         os.Getenv("OPENAI_API_KEY"),
 		VAPIDPublic:       os.Getenv("VAPID_PUBLIC_KEY"),

@@ -36,6 +36,7 @@ type Deps struct {
 	Notifications *app.NotificationService
 	Requirements  *app.RequirementService
 	Dashboard     *app.DashboardService
+	IGDT          *app.IGDTService
 	Documents     *app.DocumentService
 	Features      *app.FeatureService
 	Versions      *app.VersionService
@@ -117,6 +118,7 @@ func (s *Server) Handler() http.Handler {
 				r.With(s.requirePerm("dashboard.selection"), s.requireFeature("selection_dashboard")).Post("/dashboard/selection", s.dashboardSelection)
 				r.With(s.requirePerm("talent.write"), s.requireFeature("dni_lookup")).Get("/identity/dni/{dni}", s.lookupDNI)
 				r.Group(s.notificationRoutes)
+				r.Group(s.igdtRoutes)
 				r.With(s.requireFeature("requirements")).Group(s.requirementRoutes)
 				r.With(s.requireFeature("rq_documents")).Group(s.documentRoutes)
 				r.Group(s.talentRoutes)
