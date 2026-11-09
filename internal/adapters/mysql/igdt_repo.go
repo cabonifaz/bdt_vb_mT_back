@@ -57,7 +57,7 @@ func (r IGDTRepo) Targets(ctx context.Context, tenantID *uint64) ([]ports.IGDTTa
 	}
 	err = rs.Each(func(scan func(...any) error) error {
 		var t ports.IGDTTarget
-		if err := scan(&t.TenantID, &t.Slug, &t.KeyEnc, &t.Cursor, &t.Imported); err != nil {
+		if err := scan(&t.TenantID, &t.Slug, &t.KeyEnc, &t.Cursor, &t.Imported, &t.HiresCursor); err != nil {
 			return err
 		}
 		out = append(out, t)

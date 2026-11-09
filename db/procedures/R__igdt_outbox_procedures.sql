@@ -175,7 +175,7 @@ BEGIN
              'candidates', IFNULL((SELECT JSON_ARRAYAGG(JSON_OBJECT('id', rc.uuid, 'vacancyId', v.uuid, 'talentId', tl.uuid,
                              'name', CONCAT_WS(' ', tl.first_name, tl.last_name, tl.second_last_name), 'headline', tl.headline,
                              'stage', JSON_OBJECT('code', cs.code, 'label', JSON_UNQUOTE(JSON_EXTRACT(cs.label_i18n, '$.es')), 'order', cs.sort_order),
-                             'resigned', rc.resigned_at IS NOT NULL,
+                             'resigned', rc.resigned_at IS NOT NULL, 'hired', rc.hired_at IS NOT NULL, 'startDate', rc.hire_start_date,
                              'stageAt', DATE_FORMAT(IFNULL(rc.stage_at, rc.created_at), '%Y-%m-%dT%H:%i:%s.%fZ'),
                              'addedAt', DATE_FORMAT(rc.created_at, '%Y-%m-%dT%H:%i:%s.%fZ')))
                              FROM requirement_candidate rc
@@ -233,6 +233,69 @@ BEGIN
     JOIN talent tl ON tl.id = rc.talent_id
     LEFT JOIN master_item dt ON dt.id = tl.doc_type_item_id
     LEFT JOIN tenant_integration ti ON ti.tenant_id = p_tenant_id AND ti.provider = 'IGDT';
+END $$
+
+DELIMITER ;
+
+DELIMITER $$
+
+-- Ingresos registrados en IGDT (eventos HIRED desde el cursor): marca a los candidatos como ingresados y cierra como
+-- Atendido el RQ abierto que ya tiene tantos ingresos (vigentes) como vacantes. Devuelve los RQ cerrados.
+DROP PROCEDURE IF EXISTS sp_igdt_apply_hires $$
+CREATE PROCEDURE sp_igdt_apply_hires(IN p_tenant_id BIGINT UNSIGNED, IN p_events JSON, IN p_cursor BIGINT UNSIGNED)
+BEGIN
+  DECLARE v_attended BIGINT UNSIGNED;
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN ROLLBACK; RESIGNAL; END;
+  SET v_attended = (SELECT i.id FROM master_item i JOIN master_table t ON t.id = i.master_table_id AND t.code = 'RQ_STATUS'
+                     WHERE i.code = 'ATTENDED' AND i.tenant_id IS NULL AND i.deleted_at IS NULL);
+  DROP TEMPORARY TABLE IF EXISTS tmp_igdt_hired;
+  CREATE TEMPORARY TABLE tmp_igdt_hired (candidate_id BIGINT UNSIGNED PRIMARY KEY, requirement_id BIGINT UNSIGNED,
+    start_date DATE NULL, position VARCHAR(150) NULL) ENGINE=MEMORY;
+  INSERT IGNORE INTO tmp_igdt_hired
+  SELECT rc.id, rc.requirement_id, j.start_date, j.position
+    FROM JSON_TABLE(IFNULL(p_events, JSON_ARRAY()), '$[*]' COLUMNS (
+           type VARCHAR(20) PATH '$.type', cid CHAR(36) PATH '$.candidateId',
+           start_date DATE PATH '$.startDate' NULL ON EMPTY NULL ON ERROR,
+           position VARCHAR(150) PATH '$.position' NULL ON EMPTY NULL ON ERROR)) j
+    JOIN requirement_candidate rc ON rc.uuid = j.cid
+    JOIN requirement r ON r.id = rc.requirement_id AND r.tenant_id = p_tenant_id
+   WHERE j.type = 'HIRED' AND rc.hired_at IS NULL;
+  DROP TEMPORARY TABLE IF EXISTS tmp_igdt_rqs;
+  CREATE TEMPORARY TABLE tmp_igdt_rqs (id BIGINT UNSIGNED PRIMARY KEY) ENGINE=MEMORY;
+  INSERT IGNORE INTO tmp_igdt_rqs SELECT DISTINCT requirement_id FROM tmp_igdt_hired;
+  START TRANSACTION;
+  INSERT INTO requirement_candidate_event (candidate_id, type, data)
+  SELECT h.candidate_id, 'HIRED', JSON_OBJECT('startDate', h.start_date, 'position', h.position, 'source', 'IGDT') FROM tmp_igdt_hired h;
+  UPDATE requirement_candidate rc JOIN tmp_igdt_hired h ON h.candidate_id = rc.id
+     SET rc.hired_at = NOW(3), rc.hire_start_date = h.start_date;
+  -- RQ abiertos con todas sus vacantes cubiertas por ingresos vigentes: se cierran como Atendido
+  DROP TEMPORARY TABLE IF EXISTS tmp_igdt_closed;
+  CREATE TEMPORARY TABLE tmp_igdt_closed (id BIGINT UNSIGNED PRIMARY KEY) ENGINE=MEMORY;
+  INSERT INTO tmp_igdt_closed
+  SELECT r.id FROM tmp_igdt_rqs x
+    JOIN requirement r ON r.id = x.id AND r.deleted_at IS NULL
+    JOIN master_item s ON s.id = r.status_item_id AND s.str1 = 'OPEN'
+   WHERE v_attended IS NOT NULL
+     AND (SELECT IFNULL(SUM(v.quantity), 0) FROM requirement_vacancy v WHERE v.requirement_id = r.id AND v.deleted_at IS NULL) > 0
+     AND (SELECT COUNT(*) FROM requirement_candidate rc WHERE rc.requirement_id = r.id AND rc.deleted_at IS NULL
+           AND rc.resigned_at IS NULL AND rc.hired_at IS NOT NULL)
+         >= (SELECT SUM(v.quantity) FROM requirement_vacancy v WHERE v.requirement_id = r.id AND v.deleted_at IS NULL);
+  UPDATE requirement r JOIN tmp_igdt_closed c ON c.id = r.id
+     SET r.status_item_id = v_attended, r.closed_at = IFNULL(r.closed_at, NOW(3)), r.version = r.version + 1;
+  UPDATE tenant_integration SET hires_cursor = GREATEST(hires_cursor, p_cursor), last_error = NULL
+   WHERE tenant_id = p_tenant_id AND provider = 'IGDT';
+  COMMIT;
+  INSERT INTO audit_log (tenant_id, user_id, api_key_id, action, entity, entity_id, detail, ip)
+  SELECT p_tenant_id, NULL, NULL, 'AUTO_CLOSE', 'requirement', r.uuid, JSON_OBJECT('reason', 'IGDT_HIRES', 'to', 'ATTENDED'), NULL
+    FROM tmp_igdt_closed c JOIN requirement r ON r.id = c.id;
+  -- el RQ (con sus postulantes ingresados) vuelve a publicarse en IGDT
+  INSERT INTO igdt_outbox (tenant_id, kind, entity_uuid)
+  SELECT p_tenant_id, 'RQ', r.uuid FROM tmp_igdt_rqs x JOIN requirement r ON r.id = x.id
+  ON DUPLICATE KEY UPDATE next_at = NOW(3), attempts = 0;
+  SELECT r.uuid, r.code FROM tmp_igdt_closed c JOIN requirement r ON r.id = c.id;
+  DROP TEMPORARY TABLE IF EXISTS tmp_igdt_hired;
+  DROP TEMPORARY TABLE IF EXISTS tmp_igdt_rqs;
+  DROP TEMPORARY TABLE IF EXISTS tmp_igdt_closed;
 END $$
 
 DELIMITER ;

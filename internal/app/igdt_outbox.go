@@ -103,6 +103,7 @@ func (s *IGDTService) Pump(ctx context.Context, every time.Duration) {
 			if err := s.drain(ctx, t); err != nil && !errors.Is(err, context.Canceled) {
 				slog.Warn("igdt: envío fallido", "tenant", t.Slug, "err", domain.AsError(err).Code)
 			}
+			s.pullHires(ctx, t)
 		}
 		if time.Since(lastPurge) > 24*time.Hour {
 			lastPurge = time.Now()
@@ -322,4 +323,54 @@ func (s *IGDTService) resendAll(ctx context.Context, tid uint64) error {
 		return err
 	}
 	return s.drain(ctx, targets[0])
+}
+
+// pullHires lee los ingresos registrados en IGDT y los aplica (candidato ingresado, RQ cerrado si cubrió sus
+// vacantes). Sin el alcance hires.read en el token se reintenta cada 15 minutos para no saturar.
+func (s *IGDTService) pullHires(ctx context.Context, t ports.IGDTTarget) {
+	if s.Hires == nil {
+		return
+	}
+	s.mu.Lock()
+	wait := s.hiresWait[t.TenantID]
+	s.mu.Unlock()
+	if time.Now().Before(wait) {
+		return
+	}
+	key, err := s.Cipher.Decrypt(t.KeyEnc)
+	if err != nil || key == "" {
+		return
+	}
+	cursor := t.HiresCursor
+	for page := 0; page < 10; page++ {
+		res, err := s.Hires.HireEvents(ctx, key, cursor, 200)
+		if err != nil {
+			code := domain.AsError(err).Code
+			if code == "IGDT_SCOPE_MISSING" {
+				s.mu.Lock()
+				if s.hiresWait == nil {
+					s.hiresWait = map[uint64]time.Time{}
+				}
+				s.hiresWait[t.TenantID] = time.Now().Add(15 * time.Minute)
+				s.mu.Unlock()
+			}
+			slog.Warn("igdt: no se pudieron leer los ingresos", "tenant", t.Slug, "err", code)
+			return
+		}
+		if res.Next == cursor {
+			return
+		}
+		closed, err := s.Repo.ApplyHires(ctx, t.TenantID, res.Events, res.Next)
+		if err != nil {
+			slog.Warn("igdt: no se pudieron aplicar los ingresos", "tenant", t.Slug, "err", err)
+			return
+		}
+		if len(closed) > 0 {
+			slog.Info("igdt: RQ cerrados por ingresos registrados", "tenant", t.Slug, "rqs", closed)
+		}
+		cursor = res.Next
+		if !res.More {
+			return
+		}
+	}
 }

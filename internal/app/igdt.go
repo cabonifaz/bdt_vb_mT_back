@@ -24,11 +24,14 @@ type IGDTService struct {
 	Repo   ports.IGDTRepository
 	Client ports.IGDTClient
 	Pusher ports.IGDTPusher
+	Hires  ports.IGDTHiresReader
 	Cipher ports.Cipher
 
 	mu    sync.Mutex
 	cache map[uint64]igdtActive
 	kick  chan struct{}
+	// hiresWait: hasta cuándo no leer ingresos de un tenant (token sin hires.read)
+	hiresWait map[uint64]time.Time
 }
 
 type igdtActive struct {

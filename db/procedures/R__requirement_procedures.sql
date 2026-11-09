@@ -174,6 +174,7 @@ BEGIN
                        WHERE v.requirement_id = r.id AND v.deleted_at IS NULL), JSON_ARRAY()),
            'candidates', IFNULL((SELECT JSON_ARRAYAGG(JSON_OBJECT('id', rc.uuid, 'vacancyId', v.uuid, 'boardOrder', rc.board_order, 'notes', rc.notes,
                           'stage', JSON_OBJECT('id', cs.uuid, 'code', cs.code, 'label', cs.label_i18n), 'stageAt', rc.stage_at, 'updatedAt', IFNULL(rc.updated_at, rc.created_at),
+                          'hire', IF(rc.hired_at IS NULL, NULL, JSON_OBJECT('at', rc.hired_at, 'startDate', rc.hire_start_date)),
                           'resignation', IF(rc.resigned_at IS NULL, NULL, JSON_OBJECT('at', rc.resigned_at, 'offboard', rc.offboard_status, 'offboardAt', rc.offboard_at)),
                           'docs', IFNULL((SELECT JSON_ARRAYAGG(JSON_OBJECT('typeId', rdt.uuid, 'mode', rd.mode,
                                      'status', IFNULL((SELECT IF(td.expires_at IS NOT NULL AND td.expires_at < CURDATE(), 'EXPIRED', td.status)

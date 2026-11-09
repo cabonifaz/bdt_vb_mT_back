@@ -82,7 +82,7 @@ func Build(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, erro
 	// IGDT gobierna los catálogos compartidos: sincronización cada 5 minutos de los tenants conectados (en local no,
 	// comparte la BD de staging)
 	igdtClient := igdt.New(cfg.IGDTAPIURL)
-	igdtSvc := &app.IGDTService{Repo: mysql.IGDTRepo{Store: store}, Client: igdtClient, Pusher: igdtClient, Cipher: cipher}
+	igdtSvc := &app.IGDTService{Repo: mysql.IGDTRepo{Store: store}, Client: igdtClient, Pusher: igdtClient, Hires: igdtClient, Cipher: cipher}
 	if !cfg.IsLocal() {
 		go igdtSvc.Watch(ctx, 5*time.Minute)
 	}

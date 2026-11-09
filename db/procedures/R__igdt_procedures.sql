@@ -66,7 +66,7 @@ END $$
 DROP PROCEDURE IF EXISTS sp_igdt_targets $$
 CREATE PROCEDURE sp_igdt_targets(IN p_tenant_id BIGINT UNSIGNED)
 BEGIN
-  SELECT ti.tenant_id, t.slug, ti.api_key_enc, ti.sync_cursor, ti.imported_at IS NOT NULL AS imported
+  SELECT ti.tenant_id, t.slug, ti.api_key_enc, ti.sync_cursor, ti.imported_at IS NOT NULL AS imported, ti.hires_cursor
     FROM tenant_integration ti JOIN tenant t ON t.id = ti.tenant_id AND t.status = 'ACTIVE' AND t.deleted_at IS NULL
    WHERE ti.provider = 'IGDT' AND ti.status = 'ACTIVE' AND (p_tenant_id IS NULL OR ti.tenant_id = p_tenant_id)
    ORDER BY ti.tenant_id;

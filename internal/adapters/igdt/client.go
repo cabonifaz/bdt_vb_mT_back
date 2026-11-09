@@ -134,3 +134,13 @@ func (c *Client) PushRequirements(ctx context.Context, key string, items []json.
 func (c *Client) PushHires(ctx context.Context, key string, items []json.RawMessage) ([]ports.IGDTPushResult, error) {
 	return c.push(ctx, "/integration/v1/hires", key, items)
 }
+
+// HireEvents lee los ingresos registrados en IGDT desde el cursor (alcance hires.read).
+func (c *Client) HireEvents(ctx context.Context, key string, since uint64, limit int) (*ports.IGDTHireEvents, error) {
+	q := url.Values{"since": {strconv.FormatUint(since, 10)}, "limit": {strconv.Itoa(limit)}}
+	var out ports.IGDTHireEvents
+	if err := c.do(ctx, http.MethodGet, "/integration/v1/hires/events?"+q.Encode(), key, nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}

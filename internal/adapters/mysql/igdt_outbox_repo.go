@@ -81,3 +81,24 @@ func (r IGDTRepo) HireSnapshots(ctx context.Context, tenantID uint64, ids []stri
 	b, _ := json.Marshal(ids)
 	return RequirementRepo(r).rawDocs(ctx, "sp_igdt_hire_snapshots", tenantID, string(b))
 }
+
+func (r IGDTRepo) ApplyHires(ctx context.Context, tenantID uint64, events json.RawMessage, cursor uint64) ([]string, error) {
+	rs, err := r.call(ctx, "sp_igdt_apply_hires", tenantID, optJSON(events), cursor)
+	if err != nil {
+		return nil, err
+	}
+	defer rs.Close()
+	out := []string{}
+	if !rs.Next() {
+		return out, nil
+	}
+	err = rs.Each(func(scan func(...any) error) error {
+		var id, code string
+		if err := scan(&id, &code); err != nil {
+			return err
+		}
+		out = append(out, code)
+		return nil
+	})
+	return out, err
+}

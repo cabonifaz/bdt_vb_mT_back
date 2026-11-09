@@ -34,6 +34,8 @@ type IGDTTarget struct {
 	KeyEnc   []byte
 	Cursor   uint64
 	Imported bool
+	// HiresCursor: hasta qué evento de ingreso de IGDT se aplicó
+	HiresCursor uint64
 }
 
 type IGDTRepository interface {
@@ -89,4 +91,18 @@ type IGDTOutboxRepository interface {
 	OutboxStatus(ctx context.Context, tenantID uint64) (json.RawMessage, error)
 	RQSnapshots(ctx context.Context, tenantID uint64, ids []string) ([]json.RawMessage, error)
 	HireSnapshots(ctx context.Context, tenantID uint64, ids []string) ([]json.RawMessage, error)
+	// ApplyHires marca los ingresos y cierra los RQ cubiertos; devuelve los códigos de los RQ cerrados.
+	ApplyHires(ctx context.Context, tenantID uint64, events json.RawMessage, cursor uint64) ([]string, error)
+}
+
+// IGDTHireEvents: una página de eventos de ingreso registrados en IGDT.
+type IGDTHireEvents struct {
+	Events json.RawMessage `json:"events"`
+	Next   uint64          `json:"next"`
+	More   bool            `json:"more"`
+}
+
+// IGDTHiresReader lee los ingresos registrados en IGDT (alcance hires.read).
+type IGDTHiresReader interface {
+	HireEvents(ctx context.Context, key string, since uint64, limit int) (*IGDTHireEvents, error)
 }
