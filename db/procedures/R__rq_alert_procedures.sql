@@ -36,6 +36,13 @@ BEGIN
   ON DUPLICATE KEY UPDATE warn_days = VALUES(warn_days), critical_days = VALUES(critical_days), notify = VALUES(notify), updated_by = p_actor_id;
   CALL sp_audit_insert(p_tenant_id, p_actor_id, NULL, 'UPDATE', 'rq_alert_setting', NULL,
     JSON_OBJECT('warnDays', p_warn, 'criticalDays', p_crit, 'notify', IFNULL(p_notify, 1)), p_ip);
+  -- IGDT muestra las mismas alertas: se reenvían los RQ abiertos con los nuevos días
+  IF EXISTS (SELECT 1 FROM tenant_integration WHERE tenant_id = p_tenant_id AND provider = 'IGDT' AND status = 'ACTIVE') THEN
+    INSERT INTO igdt_outbox (tenant_id, kind, entity_uuid)
+    SELECT p_tenant_id, 'RQ', r.uuid FROM requirement r JOIN master_item s ON s.id = r.status_item_id
+     WHERE r.tenant_id = p_tenant_id AND r.deleted_at IS NULL AND s.str1 = 'OPEN'
+    ON DUPLICATE KEY UPDATE next_at = NOW(3), attempts = 0;
+  END IF;
 END $$
 
 -- Barrido (lo corre la API cada hora): recalcula el nivel de cada RQ y devuelve los que subieron de nivel

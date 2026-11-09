@@ -3,6 +3,9 @@
 Formato: `## vMAYOR.MENOR — AAAA-MM-DD`, seguido de los cambios en viñetas (español). Al publicar una versión se
 sube `VERSION` y se agrega su sección aquí: la API la registra al desplegarse en cada ambiente y la notifica.
 
+## v1.6 — 2026-11-09
+- IGDT recibe la fecha de registro del requerimiento y la configuración de alertas de RQ sin movimiento, para mostrar las mismas vistas y etiquetas del tablero. Al cambiar los días de alerta se reenvían los requerimientos abiertos.
+
 ## v1.5 — 2026-11-09
 - Con el ingreso registrado en IGDT, el candidato aparece como «Ingresó» en el pipeline y ya no se puede mover ni retirar.
 - El requerimiento abierto que alcanza tantos ingresos como vacantes se cierra solo como Atendido.

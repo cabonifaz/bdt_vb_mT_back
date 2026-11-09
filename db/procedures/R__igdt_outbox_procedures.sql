@@ -144,7 +144,15 @@ DROP PROCEDURE IF EXISTS sp_igdt_rq_snapshot $$
 DROP PROCEDURE IF EXISTS sp_igdt_rq_snapshots $$
 CREATE PROCEDURE sp_igdt_rq_snapshots(IN p_tenant_id BIGINT UNSIGNED, IN p_uuids JSON)
 BEGIN
+    DECLARE v_warn, v_crit INT;
+    DECLARE v_notify, v_stale_on TINYINT(1);
+    -- alertas de RQ sin movimiento del tenant: IGDT aplica las mismas vistas y etiquetas que el tablero de BDT
+    CALL sp_rq_alert_days(p_tenant_id, v_warn, v_crit, v_notify);
+    SET v_stale_on = EXISTS (SELECT 1 FROM feature f LEFT JOIN tenant_feature tf ON tf.feature_id = f.id AND tf.tenant_id = p_tenant_id
+                              WHERE f.code = 'rq_stale_alerts' AND f.status = 'ACTIVE' AND IFNULL(tf.enabled, f.default_enabled) = 1);
     SELECT JSON_OBJECT('id', r.uuid, 'code', r.code, 'title', r.title, 'description', r.description,
+             'createdAt', DATE_FORMAT(r.created_at, '%Y-%m-%dT%H:%i:%s.%fZ'),
+             'alerts', JSON_OBJECT('enabled', v_stale_on = 1, 'warnDays', v_warn, 'criticalDays', v_crit),
              'status', JSON_OBJECT('code', s.code, 'label', JSON_UNQUOTE(JSON_EXTRACT(s.label_i18n, '$.es')), 'group', IFNULL(s.str1, 'OPEN')),
              'client', JSON_OBJECT('id', COALESCE((SELECT m.remote_uuid FROM igdt_map m WHERE m.tenant_id = p_tenant_id
                                                      AND m.entity = 'MASTER_ITEM' AND m.local_id = c.id), c.uuid),
