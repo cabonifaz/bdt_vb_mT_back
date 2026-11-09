@@ -44,10 +44,10 @@ CREATE PROCEDURE sp_igdt_save(IN p_actor_id BIGINT UNSIGNED, IN p_tenant_id BIGI
   IN p_remote_tenant VARCHAR(60), IN p_ip VARCHAR(45))
 BEGIN
   CALL sp_assert_actor(p_actor_id, p_tenant_id, 'tenant.integrations.manage');
-  INSERT INTO tenant_integration (tenant_id, provider, api_key_enc, remote_tenant, status, created_by)
-  VALUES (p_tenant_id, 'IGDT', p_key_enc, p_remote_tenant, 'ACTIVE', p_actor_id)
+  INSERT INTO tenant_integration (tenant_id, provider, api_key_enc, remote_tenant, status, hires_from, created_by)
+  VALUES (p_tenant_id, 'IGDT', p_key_enc, p_remote_tenant, 'ACTIVE', NOW(3) - INTERVAL 30 DAY, p_actor_id)
   ON DUPLICATE KEY UPDATE api_key_enc = VALUES(api_key_enc), remote_tenant = VALUES(remote_tenant), status = 'ACTIVE',
-                          last_error = NULL, updated_by = p_actor_id;
+                          last_error = NULL, hires_from = IFNULL(hires_from, VALUES(hires_from)), updated_by = p_actor_id;
   CALL sp_audit_insert(p_tenant_id, p_actor_id, NULL, 'CONNECT', 'tenant_integration', 'IGDT', JSON_OBJECT('remoteTenant', p_remote_tenant), p_ip);
 END $$
 

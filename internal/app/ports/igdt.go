@@ -37,6 +37,7 @@ type IGDTTarget struct {
 }
 
 type IGDTRepository interface {
+	IGDTOutboxRepository
 	Status(ctx context.Context, m Meta, tenantID uint64) (json.RawMessage, error)
 	Save(ctx context.Context, m Meta, tenantID uint64, keyEnc []byte, remoteTenant string) error
 	Disable(ctx context.Context, m Meta, tenantID uint64) error
@@ -47,4 +48,45 @@ type IGDTRepository interface {
 	ApplyChanges(ctx context.Context, tenantID uint64, changes json.RawMessage, cursor uint64) (int, error)
 	SyncError(ctx context.Context, tenantID uint64, msg string) error
 	TariffLookup(ctx context.Context, m Meta, tenantID uint64, profileID string, clientID *string, date string) (json.RawMessage, error)
+}
+
+// IGDTOutboxItem: envío pendiente a IGDT (Kind RQ: uuid del requerimiento; HIRE: uuid del candidato).
+type IGDTOutboxItem struct {
+	ID       uint64
+	Kind     string
+	EntityID string
+}
+
+// IGDTOutboxResult: resultado de un envío de la cola (OK 1/0 para el SP).
+type IGDTOutboxResult struct {
+	ID    uint64 `json:"id"`
+	OK    int    `json:"ok"`
+	Error string `json:"error,omitempty"`
+}
+
+// IGDTPushResult: resultado por elemento de un envío a IGDT.
+type IGDTPushResult struct {
+	ID    string `json:"id"`
+	OK    bool   `json:"ok"`
+	Event string `json:"event,omitempty"`
+	Error string `json:"error,omitempty"`
+}
+
+// IGDTPusher: envíos de la bandeja de selección (lotes de hasta 50).
+type IGDTPusher interface {
+	PushRequirements(ctx context.Context, key string, items []json.RawMessage) ([]IGDTPushResult, error)
+	PushHires(ctx context.Context, key string, items []json.RawMessage) ([]IGDTPushResult, error)
+}
+
+// IGDTOutboxRepository: cola de envíos a IGDT y snapshots (sin actor: los usa el proceso de envío).
+type IGDTOutboxRepository interface {
+	OutboxRQ(ctx context.Context, tenantID uint64, rqID string) error
+	OutboxCandidate(ctx context.Context, tenantID uint64, candidateID string) error
+	OutboxReconcile(ctx context.Context, tenantID uint64, full bool) (int, error)
+	OutboxNext(ctx context.Context, tenantID uint64, limit int) ([]IGDTOutboxItem, error)
+	OutboxResults(ctx context.Context, results []IGDTOutboxResult) error
+	OutboxPurge(ctx context.Context) error
+	OutboxStatus(ctx context.Context, tenantID uint64) (json.RawMessage, error)
+	RQSnapshots(ctx context.Context, tenantID uint64, ids []string) ([]json.RawMessage, error)
+	HireSnapshots(ctx context.Context, tenantID uint64, ids []string) ([]json.RawMessage, error)
 }

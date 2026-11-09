@@ -81,10 +81,15 @@ func Build(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, erro
 	}
 	// IGDT gobierna los catálogos compartidos: sincronización cada 5 minutos de los tenants conectados (en local no,
 	// comparte la BD de staging)
-	igdtSvc := &app.IGDTService{Repo: mysql.IGDTRepo{Store: store}, Client: igdt.New(cfg.IGDTAPIURL), Cipher: cipher}
+	igdtClient := igdt.New(cfg.IGDTAPIURL)
+	igdtSvc := &app.IGDTService{Repo: mysql.IGDTRepo{Store: store}, Client: igdtClient, Pusher: igdtClient, Cipher: cipher}
 	if !cfg.IsLocal() {
 		go igdtSvc.Watch(ctx, 5*time.Minute)
 	}
+	// bandeja de selección de IGDT: envía los cambios de RQ y candidatos al momento (y revisa la cola cada 30 s).
+	// Los envíos son idempotentes, así que también corre en local.
+	go igdtSvc.Pump(ctx, 30*time.Second)
+	requirements.IGDT = igdtSvc
 	talents := &app.TalentService{Repo: mysql.TalentRepo{Store: store}, Cipher: cipher, Storage: files,
 		Translator: openAI, Reader: openAI, Usage: usageRepo, Notifier: notifications}
 	srv := httpapi.NewServer(httpapi.Config{CORSOrigins: cfg.CORSOrigins, TrustProxy: cfg.TrustProxy,

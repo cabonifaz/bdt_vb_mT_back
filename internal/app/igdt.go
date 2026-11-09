@@ -23,10 +23,12 @@ import (
 type IGDTService struct {
 	Repo   ports.IGDTRepository
 	Client ports.IGDTClient
+	Pusher ports.IGDTPusher
 	Cipher ports.Cipher
 
 	mu    sync.Mutex
 	cache map[uint64]igdtActive
+	kick  chan struct{}
 }
 
 type igdtActive struct {
@@ -77,6 +79,9 @@ func (s *IGDTService) Status(ctx context.Context, p *domain.Principal) (json.Raw
 	var m map[string]any
 	if json.Unmarshal(doc, &m) == nil {
 		m["available"] = s.Client != nil && s.Client.Enabled()
+		if ob, err := s.Repo.OutboxStatus(ctx, tid); err == nil && ob != nil {
+			m["selection"] = ob
+		}
 		doc, _ = json.Marshal(m)
 	}
 	return doc, nil
@@ -127,6 +132,7 @@ func (s *IGDTService) Connect(ctx context.Context, p *domain.Principal, ip, key 
 	if err := s.syncTenant(ctx, tid); err != nil {
 		slog.Warn("igdt: la primera sincronización falló", "tenant", tid, "err", err)
 	}
+	s.resendInBackground(tid)
 	return s.Status(ctx, p)
 }
 
@@ -152,6 +158,7 @@ func (s *IGDTService) SyncNow(ctx context.Context, p *domain.Principal) (json.Ra
 	if err := s.syncTenant(ctx, tid); err != nil {
 		return nil, err
 	}
+	s.resendInBackground(tid)
 	return s.Status(ctx, p)
 }
 
@@ -236,4 +243,15 @@ func (s *IGDTService) TariffLookup(ctx context.Context, p *domain.Principal, pro
 		c = &clientID
 	}
 	return s.Repo.TariffLookup(ctx, meta(p, ""), tid, profileID, c, date)
+}
+
+// resendInBackground reenvía a IGDT todos los RQ y candidatos confirmados del tenant (bandeja de selección).
+func (s *IGDTService) resendInBackground(tid uint64) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		if err := s.resendAll(ctx, tid); err != nil {
+			slog.Warn("igdt: reenvío de la bandeja de selección fallido", "tenant", tid, "err", domain.AsError(err).Code)
+		}
+	}()
 }

@@ -3,6 +3,11 @@
 Formato: `## vMAYOR.MENOR — AAAA-MM-DD`, seguido de los cambios en viñetas (español). Al publicar una versión se
 sube `VERSION` y se agrega su sección aquí: la API la registra al desplegarse en cada ambiente y la notifica.
 
+## v1.4 — 2026-11-09
+- Con la empresa conectada a IGDT, los requerimientos y sus postulantes se publican en IGDT al momento, y cada candidato confirmado crea allá una solicitud de ingreso para el gestor de servicios (se cancela si se retira la confirmación).
+- La pantalla de integración muestra el estado de esos envíos; los que fallan se reintentan solos.
+- Corrección: al elegir el perfil de una vacante, la tarifa sugerida ya no borra la cantidad escrita mientras tanto.
+
 ## v1.3 — 2026-11-05
 - Integración con IGDT, el maestro único de catálogos: con la empresa conectada, clientes y contactos, perfiles, tarifario, modalidades, monedas, plazos, áreas y motivos se administran en IGDT y llegan solos a BDT.
 - Al crear una vacante se propone la tarifa del tarifario de IGDT.

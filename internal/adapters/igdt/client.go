@@ -114,3 +114,23 @@ func (c *Client) Import(ctx context.Context, key string, export json.RawMessage)
 	}
 	return out.Map, nil
 }
+
+func (c *Client) push(ctx context.Context, path, key string, items []json.RawMessage) ([]ports.IGDTPushResult, error) {
+	var out struct {
+		Results []ports.IGDTPushResult `json:"results"`
+	}
+	if err := c.do(ctx, http.MethodPost, path, key, map[string]any{"items": items}, &out); err != nil {
+		return nil, err
+	}
+	return out.Results, nil
+}
+
+// PushRequirements publica en IGDT el último estado de los RQ (bandeja de selección).
+func (c *Client) PushRequirements(ctx context.Context, key string, items []json.RawMessage) ([]ports.IGDTPushResult, error) {
+	return c.push(ctx, "/integration/v1/requirements", key, items)
+}
+
+// PushHires envía los candidatos confirmados (o el retiro de su confirmación): solicitudes de ingreso en IGDT.
+func (c *Client) PushHires(ctx context.Context, key string, items []json.RawMessage) ([]ports.IGDTPushResult, error) {
+	return c.push(ctx, "/integration/v1/hires", key, items)
+}

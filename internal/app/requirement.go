@@ -21,6 +21,25 @@ type RequirementService struct {
 	Repo     ports.RequirementRepository
 	Cipher   ports.Cipher
 	Notifier RQNotifier
+	IGDT     RQOutbox
+}
+
+// RQOutbox: publica en IGDT los cambios de RQ y candidatos (bandeja de selección; solo con la integración activa).
+type RQOutbox interface {
+	RQChanged(ctx context.Context, tenantID uint64, rqID string)
+	CandidateChanged(ctx context.Context, tenantID uint64, candidateID string)
+}
+
+func (s *RequirementService) outRQ(ctx context.Context, tid uint64, id string, err error) {
+	if err == nil && s.IGDT != nil {
+		s.IGDT.RQChanged(ctx, tid, id)
+	}
+}
+
+func (s *RequirementService) outCandidate(ctx context.Context, tid uint64, id string, err error) {
+	if err == nil && s.IGDT != nil {
+		s.IGDT.CandidateChanged(ctx, tid, id)
+	}
 }
 
 // RQNotifier avisa a los usuarios del tenant cuando se crea o cambia un RQ, y al equipo del RQ cuando lleva
@@ -321,6 +340,7 @@ func (s *RequirementService) Save(ctx context.Context, p *domain.Principal, ip, 
 		Owners: owners, Documents: documents, NeedsEmo: in.NeedsEmo, NeedsSctr: in.NeedsSctr, NeedsLaptop: in.NeedsLaptop,
 		Contacts: contacts, Billing: billing, Vacancies: vacancies, ExpectedVersion: in.ExpectedVersion,
 	})
+	s.outRQ(ctx, tid, id, err)
 	if err == nil && c != nil && s.Notifier != nil {
 		s.Notifier.RQChanged(ctx, p, c)
 	}
@@ -337,6 +357,7 @@ func (s *RequirementService) SetStatus(ctx context.Context, p *domain.Principal,
 		return nil, domain.ErrValidation
 	}
 	c, err := s.Repo.SetStatus(ctx, meta(p, ip), tid, id, statusID, order)
+	s.outRQ(ctx, tid, id, err)
 	if err == nil && c != nil && c.PreviousStatus != c.Status && s.Notifier != nil {
 		s.Notifier.RQChanged(ctx, p, c)
 	}
@@ -366,6 +387,7 @@ func (s *RequirementService) Reopen(ctx context.Context, p *domain.Principal, ip
 		st = &statusID
 	}
 	c, err := s.Repo.Reopen(ctx, meta(p, ip), tid, id, reason, notes, candidates, st)
+	s.outRQ(ctx, tid, id, err)
 	if err == nil && c != nil && s.Notifier != nil {
 		s.Notifier.RQChanged(ctx, p, c)
 	}
@@ -380,7 +402,9 @@ func (s *RequirementService) Delete(ctx context.Context, p *domain.Principal, ip
 	if !validUUID(id) {
 		return domain.ErrNotFound
 	}
-	return s.Repo.Delete(ctx, meta(p, ip), tid, id)
+	err = s.Repo.Delete(ctx, meta(p, ip), tid, id)
+	s.outRQ(ctx, tid, id, err)
+	return err
 }
 
 func (s *RequirementService) AddCandidate(ctx context.Context, p *domain.Principal, ip, rqID, id, talentID, vacancyID string) (bool, error) {
@@ -391,7 +415,9 @@ func (s *RequirementService) AddCandidate(ctx context.Context, p *domain.Princip
 	if !validUUID(rqID) || !validUUID(id) || !validUUID(talentID) || !validUUID(vacancyID) {
 		return false, domain.ErrValidation
 	}
-	return s.Repo.CandidateAdd(ctx, meta(p, ip), tid, rqID, id, talentID, vacancyID)
+	ok, err := s.Repo.CandidateAdd(ctx, meta(p, ip), tid, rqID, id, talentID, vacancyID)
+	s.outCandidate(ctx, tid, id, err)
+	return ok, err
 }
 
 func (s *RequirementService) MoveCandidate(ctx context.Context, p *domain.Principal, ip, id, stageID string, vacancyID *string, order *int) (string, error) {
@@ -403,7 +429,9 @@ func (s *RequirementService) MoveCandidate(ctx context.Context, p *domain.Princi
 	if !validUUID(id) || !validUUID(stageID) || !optRef(vacancyID) || (order != nil && (*order < 0 || *order > 1_000_000)) {
 		return "", domain.ErrValidation
 	}
-	return s.Repo.CandidateMove(ctx, meta(p, ip), tid, id, stageID, vacancyID, order)
+	to, err := s.Repo.CandidateMove(ctx, meta(p, ip), tid, id, stageID, vacancyID, order)
+	s.outCandidate(ctx, tid, id, err)
+	return to, err
 }
 
 func (s *RequirementService) RemoveCandidate(ctx context.Context, p *domain.Principal, ip, id string) error {
@@ -414,7 +442,9 @@ func (s *RequirementService) RemoveCandidate(ctx context.Context, p *domain.Prin
 	if !validUUID(id) {
 		return domain.ErrNotFound
 	}
-	return s.Repo.CandidateRemove(ctx, meta(p, ip), tid, id)
+	err = s.Repo.CandidateRemove(ctx, meta(p, ip), tid, id)
+	s.outCandidate(ctx, tid, id, err)
+	return err
 }
 
 func (s *RequirementService) ByTalent(ctx context.Context, p *domain.Principal, talentID string) ([]json.RawMessage, error) {
