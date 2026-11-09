@@ -3,6 +3,10 @@
 Formato: `## vMAYOR.MENOR — AAAA-MM-DD`, seguido de los cambios en viñetas (español). Al publicar una versión se
 sube `VERSION` y se agrega su sección aquí: la API la registra al desplegarse en cada ambiente y la notifica.
 
+## v1.5 — 2026-11-09
+- Con el ingreso registrado en IGDT, el candidato aparece como «Ingresó» en el pipeline y ya no se puede mover ni retirar.
+- El requerimiento abierto que alcanza tantos ingresos como vacantes se cierra solo como Atendido.
+
 ## v1.4 — 2026-11-09
 - Con la empresa conectada a IGDT, los requerimientos y sus postulantes se publican en IGDT al momento, y cada candidato confirmado crea allá una solicitud de ingreso para el gestor de servicios (se cancela si se retira la confirmación).
 - La pantalla de integración muestra el estado de esos envíos; los que fallan se reintentan solos.

@@ -23,6 +23,7 @@ import (
 const (
 	igdtPushBatch     = 50
 	igdtReconcileEach = 5 * time.Minute
+	igdtHiresEvery    = 10 * time.Second
 )
 
 // RQChanged / CandidateChanged: encolan el envío (no hacen fallar la operación del usuario).
@@ -71,11 +72,21 @@ func (s *IGDTService) Pump(ctx context.Context, every time.Duration) {
 	s.mu.Unlock()
 	ticker := time.NewTicker(every)
 	defer ticker.Stop()
+	// los ingresos registrados en IGDT se leen más seguido (lectura liviana desde un cursor)
+	pull := time.NewTicker(igdtHiresEvery)
+	defer pull.Stop()
 	var lastReconcile, lastPurge time.Time
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-pull.C:
+			if targets, err := s.Repo.Targets(ctx, nil); err == nil {
+				for _, t := range targets {
+					s.pullHires(ctx, t)
+				}
+			}
+			continue
 		case <-ticker.C:
 		case <-ch:
 			// agrupa los cambios seguidos (p. ej. arrastrar varias tarjetas)
@@ -367,6 +378,10 @@ func (s *IGDTService) pullHires(ctx context.Context, t ports.IGDTTarget) {
 		}
 		if len(closed) > 0 {
 			slog.Info("igdt: RQ cerrados por ingresos registrados", "tenant", t.Slug, "rqs", closed)
+		}
+		// los RQ con ingresos quedaron en la cola: se reenvían a IGDT ya, sin esperar la próxima vuelta
+		if err := s.drain(ctx, t); err != nil {
+			slog.Warn("igdt: envío fallido", "tenant", t.Slug, "err", domain.AsError(err).Code)
 		}
 		cursor = res.Next
 		if !res.More {

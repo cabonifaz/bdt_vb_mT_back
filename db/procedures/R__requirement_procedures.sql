@@ -605,6 +605,8 @@ BEGIN
   IF v_id IS NULL THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:NOT_FOUND'; END IF;
   IF v_closed = 1 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:RQ_CLOSED'; END IF;
   IF v_resigned = 1 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:CANDIDATE_RESIGNED'; END IF;
+  -- con el ingreso ya registrado en IGDT el candidato no se mueve ni se retira (el cese se gestiona en IGDT)
+  IF (SELECT hired_at FROM requirement_candidate WHERE id = v_id) IS NOT NULL THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:CANDIDATE_HIRED'; END IF;
   CALL sp_master_resolve(p_tenant_id, 'CANDIDATE_STAGE', p_stage_uuid, v_stage);
   IF v_stage IS NULL THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:VALIDATION'; END IF;
   SELECT code INTO v_to FROM master_item WHERE id = v_stage;
@@ -650,6 +652,8 @@ BEGIN
   IF v_id IS NULL THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:NOT_FOUND'; END IF;
   IF v_closed = 1 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:RQ_CLOSED'; END IF;
   IF v_resigned = 1 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:CANDIDATE_RESIGNED'; END IF;
+  -- con el ingreso ya registrado en IGDT el candidato no se mueve ni se retira (el cese se gestiona en IGDT)
+  IF (SELECT hired_at FROM requirement_candidate WHERE id = v_id) IS NOT NULL THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:CANDIDATE_HIRED'; END IF;
   UPDATE requirement_candidate SET deleted_at = NOW(3), updated_by = p_actor_id WHERE id = v_id;
   CALL sp_audit_insert(p_tenant_id, p_actor_id, NULL, 'CANDIDATE_REMOVE', 'requirement', v_rq_uuid, JSON_OBJECT('candidate', p_uuid), p_ip);
 END $$
