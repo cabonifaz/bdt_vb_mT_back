@@ -5,7 +5,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io"
+	"math"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/app/ports"
@@ -13,8 +16,67 @@ import (
 )
 
 // API de integración (key con alcance talent.read; la usa IGDT con la llave BDT automática): ficha completa, CV y
-// postulaciones de los talentos que son candidatos en algún RQ del tenant de la key. Sin tarifas. Cada lectura se audita
-// con la key.
+// postulaciones de los talentos que son candidatos en algún RQ del tenant de la key. Con el alcance talent.search la key
+// además busca en todo el banco de talentos del tenant y abre la ficha, CV y documentos de cualquier talento (no solo
+// candidatos). Sin tarifas. Cada lectura se audita con la key.
+
+const (
+	integrationPageSize    = 20
+	integrationMaxPageSize = 50
+	integrationMaxMinYears = 100
+)
+
+var englishLevelCode = regexp.MustCompile(`^[A-Z_]{1,30}$`)
+
+// ParseIntegrationTalentQuery valida los parámetros de GET /integration/v1/talents (get devuelve el valor del query
+// param): textos de hasta 150 caracteres, english como código de nivel, minYears número entre 0 y 100, page ≥ 1 y
+// pageSize entre 1 y 50 (por defecto 20). Cualquier valor inválido es VALIDATION.
+func ParseIntegrationTalentQuery(get func(string) string) (ports.IntegrationTalentFilter, error) {
+	f := ports.IntegrationTalentFilter{
+		Search: strings.TrimSpace(get("q")), Position: strings.TrimSpace(get("position")),
+		Education: strings.TrimSpace(get("education")), Skill: strings.TrimSpace(get("skill")),
+		EnglishLevel: strings.ToUpper(strings.TrimSpace(get("english"))), Page: 1, PageSize: integrationPageSize,
+	}
+	for _, v := range []string{f.Search, f.Position, f.Education, f.Skill} {
+		if len(v) > 150 {
+			return f, domain.ErrValidation
+		}
+	}
+	if f.EnglishLevel != "" && !englishLevelCode.MatchString(f.EnglishLevel) {
+		return f, domain.ErrValidation
+	}
+	if v := strings.TrimSpace(get("minYears")); v != "" {
+		n, err := strconv.ParseFloat(v, 64)
+		if err != nil || math.IsNaN(n) || n < 0 || n > integrationMaxMinYears {
+			return f, domain.ErrValidation
+		}
+		f.MinYears = &n
+	}
+	if v := strings.TrimSpace(get("page")); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > 100000 {
+			return f, domain.ErrValidation
+		}
+		f.Page = n
+	}
+	if v := strings.TrimSpace(get("pageSize")); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > integrationMaxPageSize {
+			return f, domain.ErrValidation
+		}
+		f.PageSize = n
+	}
+	return f, nil
+}
+
+// IntegrationSearch: búsqueda en el banco de talentos del tenant de la key (solo ACTIVE), sin datos personales cifrados,
+// tarifas ni lista negra. Auditada con la key (una fila por búsqueda).
+func (s *TalentService) IntegrationSearch(ctx context.Context, c *domain.ApiClient, ip string, f ports.IntegrationTalentFilter) (*ports.IntegrationTalentPage, error) {
+	if c == nil {
+		return nil, domain.NewError("APIKEY_INVALID")
+	}
+	return s.Repo.IntegrationSearch(ctx, c.TenantID, c.KeyID, f, ip)
+}
 
 // IntegrationDossier: ficha del candidato con los datos personales descifrados.
 func (s *TalentService) IntegrationDossier(ctx context.Context, c *domain.ApiClient, ip, talentID string) (json.RawMessage, error) {

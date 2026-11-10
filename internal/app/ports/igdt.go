@@ -63,7 +63,7 @@ type IGDTRepository interface {
 	ApplyMap(ctx context.Context, tenantID uint64, m json.RawMessage) error
 	ApplyChanges(ctx context.Context, tenantID uint64, changes json.RawMessage, cursor uint64) (int, error)
 	SyncError(ctx context.Context, tenantID uint64, msg string) error
-	// LinkKeyCreate crea la llave BDT automática (talent.read, habilitada) si el tenant no tiene una vigente; created = false si no.
+	// LinkKeyCreate crea la llave BDT automática (talent.read y talent.search, habilitada) si el tenant no tiene una vigente; created = false si no.
 	LinkKeyCreate(ctx context.Context, tenantID uint64, uuid, name, prefix, hash string) (bool, error)
 	// LinkKeyDrop descarta la llave automática que IGDT no recibió (revocada) y deja al tenant sin vincular.
 	LinkKeyDrop(ctx context.Context, tenantID uint64, uuid, reason string) error

@@ -14,6 +14,22 @@ type TalentFilter struct {
 	Page, PageSize                                                                   int
 }
 
+// IntegrationTalentFilter: búsqueda de la API de integración (alcance talent.search) en todo el banco del tenant.
+// Skill es texto contra la etiqueta de las habilidades técnicas; EnglishLevel, código mínimo de LANGUAGE_LEVEL.
+type IntegrationTalentFilter struct {
+	Search, Position, Education, Skill, EnglishLevel string
+	MinYears                                         *float64
+	Page, PageSize                                   int
+}
+
+// IntegrationTalentPage: total y un documento JSON por talento (forma final de la respuesta).
+type IntegrationTalentPage struct {
+	Total    int               `json:"total"`
+	Page     int               `json:"page"`
+	PageSize int               `json:"pageSize"`
+	Items    []json.RawMessage `json:"items"`
+}
+
 // TalentRecord trae los campos cifrados tal como están en la BD.
 type TalentRecord struct {
 	domain.Talent
@@ -68,7 +84,9 @@ type TalentRepository interface {
 
 	CreateFile(ctx context.Context, m Meta, tenantID uint64, talentUUID string, f domain.FileObject) (*domain.TalentFile, error)
 	GetFile(ctx context.Context, m Meta, tenantID uint64, uuid string) (*domain.FileObject, error)
-	// API de integración (key talent.read): ficha y CV de un talento que es candidato en algún RQ del tenant (auditado con la key)
+	// API de integración (key talent.read): ficha y CV de un talento que es candidato en algún RQ del tenant, o de
+	// cualquier talento del tenant si la key tiene talent.search (auditado con la key)
+	IntegrationSearch(ctx context.Context, tenantID, apiKeyID uint64, f IntegrationTalentFilter, ip string) (*IntegrationTalentPage, error)
 	IntegrationDossier(ctx context.Context, tenantID, apiKeyID uint64, talentID, ip string) (json.RawMessage, error)
 	IntegrationFile(ctx context.Context, tenantID, apiKeyID uint64, talentID, fileID, ip string) (*domain.FileObject, error)
 	// Insumos del CV con la marca del tenant: documento {talent, courseGradeId, template} e imágenes a incrustar

@@ -81,7 +81,7 @@ BEGIN
    ORDER BY ti.tenant_id;
 END $$
 
--- Llave BDT automática para IGDT (alcance talent.read, ya habilitada): se crea solo si la integración está activa y
+-- Llave BDT automática para IGDT (alcances talent.read y talent.search, ya habilitada): se crea solo si la integración está activa y
 -- el tenant aún no tiene una vigente. Devuelve created = 1 si la creó (la app la entrega a IGDT; si falla, la descarta
 -- con sp_igdt_link_key_drop). Sin actor: la llama la API (conexión, «Sincronizar ahora» o la sincronización periódica).
 DROP PROCEDURE IF EXISTS sp_igdt_link_key_create $$
@@ -98,10 +98,10 @@ BEGIN
   IF v_status = 'ACTIVE' AND NOT EXISTS (SELECT 1 FROM api_key WHERE id = v_link AND status = 'ENABLED' AND deleted_at IS NULL)
      AND EXISTS (SELECT 1 FROM tenant WHERE id = p_tenant_id AND status = 'ACTIVE' AND deleted_at IS NULL) THEN
     INSERT INTO api_key (uuid, tenant_id, name, key_prefix, key_hash, scopes, status, enabled_at)
-    VALUES (p_uuid, p_tenant_id, p_name, p_prefix, p_hash, JSON_ARRAY('talent.read'), 'ENABLED', NOW(3));
+    VALUES (p_uuid, p_tenant_id, p_name, p_prefix, p_hash, JSON_ARRAY('talent.read', 'talent.search'), 'ENABLED', NOW(3));
     UPDATE tenant_integration SET link_key_id = LAST_INSERT_ID() WHERE tenant_id = p_tenant_id AND provider = 'IGDT';
     CALL sp_audit_insert(p_tenant_id, NULL, NULL, 'CREATE', 'api_key', p_uuid,
-                         JSON_OBJECT('prefix', p_prefix, 'reason', 'IGDT_LINK', 'scopes', JSON_ARRAY('talent.read')), NULL);
+                         JSON_OBJECT('prefix', p_prefix, 'reason', 'IGDT_LINK', 'scopes', JSON_ARRAY('talent.read', 'talent.search')), NULL);
     SET v_created = 1;
   END IF;
   COMMIT;

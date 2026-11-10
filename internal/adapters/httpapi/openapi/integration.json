@@ -3,7 +3,7 @@
   "info": {
     "title": "Banco de Talentos - API de integración",
     "version": "1.0.0",
-    "description": "API para integrar sistemas externos con el Banco de Talentos. Cada API key pertenece a un tenant y debe ser habilitada por el Super Administrador. Envíe la key en la cabecera X-Api-Key. Límite: 300 solicitudes por minuto por IP. Alcances: masters.read (catálogos) y talent.read (ficha, archivos e insumos del CV de candidatos)."
+    "description": "API para integrar sistemas externos con el Banco de Talentos. Cada API key pertenece a un tenant y debe ser habilitada por el Super Administrador. Envíe la key en la cabecera X-Api-Key. Límite: 300 solicitudes por minuto por IP. Alcances: masters.read (catálogos), talent.read (ficha, archivos e insumos del CV de candidatos) y talent.search (buscar en todo el banco de talentos del tenant, solo lectura; junto con talent.read permite abrir la ficha, archivos e insumos del CV de cualquier talento del tenant, no solo de candidatos)."
   },
   "servers": [
     {
@@ -950,6 +950,113 @@
             "$ref": "#/components/schemas/CvTemplate"
           }
         }
+      },
+      "TalentSearchItem": {
+        "type": "object",
+        "description": "Talento del banco (sin datos personales cifrados, tarifas ni lista negra).",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "secondLastName": {
+            "type": "string",
+            "nullable": true
+          },
+          "headline": {
+            "type": "string",
+            "nullable": true
+          },
+          "country": {
+            "type": "object",
+            "description": "País de residencia (etiqueta por idioma)",
+            "properties": {
+              "es": {
+                "type": "string"
+              },
+              "en": {
+                "type": "string"
+              }
+            },
+            "nullable": true
+          },
+          "city": {
+            "type": "string",
+            "nullable": true
+          },
+          "yearsExperience": {
+            "type": "number",
+            "example": 4.5,
+            "description": "Años de experiencia (suma de experiencias, 1 decimal)"
+          },
+          "englishLevel": {
+            "type": "string",
+            "nullable": true,
+            "example": "ADVANCED",
+            "description": "Código LANGUAGE_LEVEL del inglés"
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "object",
+                  "description": "Etiqueta por idioma",
+                  "properties": {
+                    "es": {
+                      "type": "string"
+                    },
+                    "en": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "years": {
+                  "type": "number"
+                }
+              }
+            }
+          },
+          "avgRating": {
+            "type": "number",
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "isCandidate": {
+            "type": "boolean",
+            "description": "Es candidato vigente en algún requerimiento del tenant"
+          }
+        }
+      },
+      "TalentSearchPage": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer"
+          },
+          "page": {
+            "type": "integer"
+          },
+          "pageSize": {
+            "type": "integer"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TalentSearchItem"
+            }
+          }
+        }
       }
     },
     "responses": {
@@ -977,7 +1084,7 @@
         "description": "Límite de solicitudes superado"
       },
       "NotFound": {
-        "description": "No existe o no es candidato en un requerimiento del tenant",
+        "description": "No existe en el tenant o, si la key no tiene talent.search, no es candidato en un requerimiento del tenant",
         "content": {
           "application/json": {
             "schema": {
@@ -1067,10 +1174,133 @@
         }
       }
     },
+    "/talents": {
+      "get": {
+        "summary": "Buscar en el banco de talentos",
+        "description": "Requiere el scope talent.search. Solo talentos ACTIVE no eliminados del tenant de la key, ordenados por última actualización (más reciente primero). Los filtros se combinan (Y); los de texto no distinguen mayúsculas. Cada búsqueda queda auditada (una fila con los filtros).",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Nombre (nombres y apellidos) o titular; máx. 150",
+            "schema": {
+              "type": "string",
+              "maxLength": 150
+            }
+          },
+          {
+            "name": "position",
+            "in": "query",
+            "required": false,
+            "description": "Puesto: titular o cargo de alguna experiencia; máx. 150",
+            "schema": {
+              "type": "string",
+              "maxLength": 150
+            }
+          },
+          {
+            "name": "education",
+            "in": "query",
+            "required": false,
+            "description": "Carrera o institución de algún estudio; máx. 150",
+            "schema": {
+              "type": "string",
+              "maxLength": 150
+            }
+          },
+          {
+            "name": "skill",
+            "in": "query",
+            "required": false,
+            "description": "Texto contra la etiqueta (es/en) de las habilidades técnicas; máx. 150",
+            "schema": {
+              "type": "string",
+              "maxLength": 150
+            }
+          },
+          {
+            "name": "english",
+            "in": "query",
+            "required": false,
+            "description": "Nivel mínimo de inglés (código LANGUAGE_LEVEL: BASIC, INTERMEDIATE, ADVANCED, NATIVE)",
+            "schema": {
+              "type": "string",
+              "example": "INTERMEDIATE"
+            }
+          },
+          {
+            "name": "minYears",
+            "in": "query",
+            "required": false,
+            "description": "Años mínimos de experiencia (0-100, admite decimales)",
+            "schema": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "Página (desde 1)",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "required": false,
+            "description": "Tamaño de página (1-50)",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Página de talentos",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TalentSearchPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "description": "Parámetro inválido (VALIDATION): texto de más de 150, número inválido o fuera de rango, nivel de inglés desconocido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooMany"
+          }
+        }
+      }
+    },
     "/talents/{id}": {
       "get": {
-        "summary": "Ficha de un candidato",
-        "description": "Requiere el scope talent.read. Solo talentos que son candidatos (vigentes) en al menos un requerimiento del tenant de la key; si no, 404 TALENT_NOT_FOUND. Incluye datos personales, experiencia, estudios, idiomas, habilidades, valoraciones, archivos de CV y postulaciones. Cada lectura queda auditada.",
+        "summary": "Ficha de un talento",
+        "description": "Requiere el scope talent.read. Solo talentos que son candidatos (vigentes) en al menos un requerimiento del tenant de la key; si no, 404 TALENT_NOT_FOUND. Con el scope talent.search la key accede a cualquier talento del tenant (cualquier estado), no solo a candidatos. Incluye datos personales, experiencia, estudios, idiomas, habilidades, valoraciones, archivos de CV y postulaciones. Cada lectura queda auditada.",
         "parameters": [
           {
             "name": "id",
@@ -1111,8 +1341,8 @@
     },
     "/talents/{id}/files/{fid}": {
       "get": {
-        "summary": "Descarga un archivo del candidato (CV, documento o certificado)",
-        "description": "Requiere el scope talent.read. Solo archivos del talento de categoría CV, CV_TENANT_ES, CV_TENANT_EN, DOCUMENT o CERTIFICATE, y si el talento es candidato en el tenant; si no, 404 FILE_NOT_FOUND / TALENT_NOT_FOUND. Responde el archivo (inline) con su Content-Type. Cada descarga queda auditada.",
+        "summary": "Descarga un archivo del talento (CV, documento o certificado)",
+        "description": "Requiere el scope talent.read. Solo archivos del talento de categoría CV, CV_TENANT_ES, CV_TENANT_EN, DOCUMENT o CERTIFICATE, y si el talento es candidato en el tenant (o cualquier talento del tenant con talent.search); si no, 404 FILE_NOT_FOUND / TALENT_NOT_FOUND. Responde el archivo (inline) con su Content-Type. Cada descarga queda auditada.",
         "parameters": [
           {
             "name": "id",
@@ -1177,7 +1407,7 @@
     "/talents/{id}/cv-source": {
       "get": {
         "summary": "Insumos para generar el CV con la marca del tenant",
-        "description": "Requiere el scope talent.read. Solo talentos que son candidatos en algún requerimiento del tenant (si no, 404 TALENT_NOT_FOUND); cada lectura queda auditada. Devuelve el talento en la forma que usa BDT para armar el CV, el id del grado COURSE, la plantilla del tenant con sus imágenes y, con lang=en, los textos traducidos con IA (text; se omite con lang=es). Sin IA configurada responde 503 AI_NOT_CONFIGURED; si la IA falla, 502 AI_UNAVAILABLE.",
+        "description": "Requiere el scope talent.read. Solo talentos que son candidatos en algún requerimiento del tenant (si no, 404 TALENT_NOT_FOUND), o cualquier talento del tenant con talent.search; cada lectura queda auditada. Devuelve el talento en la forma que usa BDT para armar el CV, el id del grado COURSE, la plantilla del tenant con sus imágenes y, con lang=en, los textos traducidos con IA (text; se omite con lang=es). Sin IA configurada responde 503 AI_NOT_CONFIGURED; si la IA falla, 502 AI_UNAVAILABLE.",
         "parameters": [
           {
             "name": "id",

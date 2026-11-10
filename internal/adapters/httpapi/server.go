@@ -156,7 +156,9 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/openapi.json", s.openAPISpec)
 		r.Get("/whoami", s.integrationWhoAmI)
 		r.With(s.requireScope("masters.read")).Get("/masters", s.integrationMasters)
-		// ficha y CV de los candidatos (IGDT los lee con la llave BDT automática)
+		// búsqueda en todo el banco (talent.search) y ficha y CV de los candidatos, o de cualquier talento con talent.search
+		// (IGDT los lee con la llave BDT automática)
+		r.With(s.requireScope("talent.search")).Get("/talents", s.integrationTalentSearch)
 		r.With(s.requireScope("talent.read")).Get("/talents/{id}", s.integrationTalent)
 		r.With(s.requireScope("talent.read")).Get("/talents/{id}/files/{fid}", s.integrationTalentFile)
 		r.With(s.requireScope("talent.read")).Get("/talents/{id}/cv-source", s.integrationTalentCVSource)

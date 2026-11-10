@@ -356,6 +356,37 @@ func (r TalentRepo) GetFile(ctx context.Context, m ports.Meta, tenantID uint64, 
 	return &f, nil
 }
 
+func (r TalentRepo) IntegrationSearch(ctx context.Context, tenantID, apiKeyID uint64, f ports.IntegrationTalentFilter, ip string) (*ports.IntegrationTalentPage, error) {
+	var minYears any
+	if f.MinYears != nil {
+		minYears = *f.MinYears
+	}
+	rs, err := r.call(ctx, "sp_integration_talent_search", tenantID, apiKeyID, nullStr(f.Search), nullStr(f.Position),
+		nullStr(f.Education), nullStr(f.Skill), nullStr(f.EnglishLevel), minYears, f.Page, f.PageSize, nullStr(ip))
+	if err != nil {
+		return nil, err
+	}
+	defer rs.Close()
+	out := &ports.IntegrationTalentPage{Page: f.Page, PageSize: f.PageSize, Items: []json.RawMessage{}}
+	rs.Next()
+	if err := rs.One(&out.Total); err != nil {
+		return nil, err
+	}
+	if rs.Next() {
+		if err := rs.Each(func(scan func(...any) error) error {
+			var doc []byte
+			if err := scan(&doc); err != nil {
+				return err
+			}
+			out.Items = append(out.Items, json.RawMessage(doc))
+			return nil
+		}); err != nil {
+			return nil, err
+		}
+	}
+	return out, rs.Close()
+}
+
 func (r TalentRepo) IntegrationDossier(ctx context.Context, tenantID, apiKeyID uint64, talentID, ip string) (json.RawMessage, error) {
 	docs, err := RequirementRepo(r).rawDocs(ctx, "sp_integration_talent_dossier", tenantID, apiKeyID, talentID, nullStr(ip))
 	if err != nil {

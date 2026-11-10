@@ -14,7 +14,8 @@ import (
 
 // Llave BDT automática: con la integración activa, IGDT necesita leer de BDT la ficha, los CV y las postulaciones de los
 // candidatos. Al conectar (y en «Sincronizar ahora» o la sincronización periódica mientras falte) BDT crea una API key
-// del tenant con alcance talent.read, ya habilitada, y se la entrega a IGDT (PUT /integration/v1/bdt-link).
+// del tenant con alcances talent.read y talent.search (búsqueda en todo el banco, v1.9), ya habilitada, y se la entrega a IGDT
+// (PUT /integration/v1/bdt-link).
 //   - Si la entrega falla, la key se descarta (revocada) y se reintenta más tarde; el error queda en la integración.
 //   - Un IGDT sin el endpoint (404) no es un error: se reintenta en silencio cada cierto tiempo.
 //   - Al desconectar se retira de IGDT (sin esperar a que responda bien) y la key queda revocada.

@@ -255,7 +255,7 @@ func maskEmail(e string) string {
 // API keys
 // ---------------------------------------------------------------------
 
-var AllowedScopes = []string{"talent.read", "talent.write", "masters.read"}
+var AllowedScopes = []string{"talent.read", "talent.search", "talent.write", "masters.read"}
 
 type ApiKeyService struct {
 	Repo   ports.ApiKeyRepository

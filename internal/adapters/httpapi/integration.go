@@ -11,6 +11,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/cabonifaz/bdt_vb_mT_back/internal/app"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -129,6 +130,23 @@ func safeFileName(name, id, mimeType string) string {
 func (s *Server) integrationTalentCVSource(w http.ResponseWriter, r *http.Request) {
 	out, err := s.Talents.IntegrationCVSource(r.Context(), apiClient(r), s.clientIP(r), chi.URLParam(r, "id"),
 		strings.ToLower(strings.TrimSpace(r.URL.Query().Get("lang"))))
+	if err != nil {
+		s.writeErr(w, r, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, out)
+}
+
+// GET /integration/v1/talents?q=&position=&education=&skill=&english=&minYears=&page=&pageSize=: búsqueda en todo el
+// banco de talentos del tenant de la key (scope talent.search, solo lectura).
+func (s *Server) integrationTalentSearch(w http.ResponseWriter, r *http.Request) {
+	f, err := app.ParseIntegrationTalentQuery(r.URL.Query().Get)
+	if err != nil {
+		s.writeErr(w, r, err)
+		return
+	}
+	out, err := s.Talents.IntegrationSearch(r.Context(), apiClient(r), s.clientIP(r), f)
 	if err != nil {
 		s.writeErr(w, r, err)
 		return
