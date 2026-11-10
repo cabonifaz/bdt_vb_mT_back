@@ -77,7 +77,7 @@ func (c *Client) do(ctx context.Context, method, path, key string, in, out any) 
 	case res.StatusCode == http.StatusForbidden:
 		return domain.NewError("IGDT_SCOPE_MISSING")
 	case res.StatusCode >= 300:
-		return fmt.Errorf("%w: http %d", domain.NewError("IGDT_UNAVAILABLE"), res.StatusCode)
+		return fmt.Errorf("%w: %w", domain.NewError("IGDT_UNAVAILABLE"), httpStatus(res.StatusCode))
 	}
 	if out == nil {
 		return nil
@@ -143,4 +143,28 @@ func (c *Client) HireEvents(ctx context.Context, key string, since uint64, limit
 		return nil, err
 	}
 	return &out, nil
+}
+
+// LinkBDT entrega a IGDT la llave BDT automática del tenant, con la que IGDT lee las fichas y los CV de los candidatos.
+// Un IGDT que aún no tiene el endpoint responde 404 (IGDT_LINK_UNSUPPORTED): se reintenta más tarde.
+func (c *Client) LinkBDT(ctx context.Context, key, bdtKey string) error {
+	return notFound(c.do(ctx, http.MethodPut, "/integration/v1/bdt-link", key, map[string]string{"apiKey": bdtKey}, nil))
+}
+
+// UnlinkBDT retira de IGDT la llave BDT (al desconectar).
+func (c *Client) UnlinkBDT(ctx context.Context, key string) error {
+	return notFound(c.do(ctx, http.MethodDelete, "/integration/v1/bdt-link", key, nil, nil))
+}
+
+// httpStatus: código HTTP de una respuesta fallida de IGDT (se envuelve junto a IGDT_UNAVAILABLE).
+type httpStatus int
+
+func (h httpStatus) Error() string { return "http " + strconv.Itoa(int(h)) }
+
+func notFound(err error) error {
+	var h httpStatus
+	if errors.As(err, &h) && h == http.StatusNotFound {
+		return domain.NewError("IGDT_LINK_UNSUPPORTED")
+	}
+	return err
 }

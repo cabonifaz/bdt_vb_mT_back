@@ -27,7 +27,8 @@ CREATE PROCEDURE sp_igdt_status(IN p_actor_id BIGINT UNSIGNED, IN p_tenant_id BI
 BEGIN
   CALL sp_assert_actor(p_actor_id, p_tenant_id, 'tenant.integrations.manage');
   SELECT JSON_OBJECT('connected', IFNULL(ti.status, '') = 'ACTIVE', 'status', IFNULL(ti.status, 'NONE'), 'remoteTenant', ti.remote_tenant,
-           'importedAt', ti.imported_at, 'lastSyncAt', ti.last_sync_at, 'lastError', ti.last_error, 'cursor', IFNULL(ti.sync_cursor, 0),
+           'importedAt', ti.imported_at,
+           'bdtLinked', EXISTS (SELECT 1 FROM api_key k WHERE k.id = ti.link_key_id AND k.status = 'ENABLED' AND k.deleted_at IS NULL), 'lastSyncAt', ti.last_sync_at, 'lastError', ti.last_error, 'cursor', IFNULL(ti.sync_cursor, 0),
            'tables', (SELECT JSON_ARRAYAGG(JSON_OBJECT('code', mt.code, 'label', mt.name_i18n)) FROM master_table mt WHERE mt.igdt_shared = 1),
            'counts', JSON_OBJECT(
              'clients', (SELECT COUNT(*) FROM master_item i JOIN master_table t ON t.id = i.master_table_id AND t.code = 'CLIENT'
@@ -56,9 +57,17 @@ END $$
 DROP PROCEDURE IF EXISTS sp_igdt_disable $$
 CREATE PROCEDURE sp_igdt_disable(IN p_actor_id BIGINT UNSIGNED, IN p_tenant_id BIGINT UNSIGNED, IN p_ip VARCHAR(45))
 BEGIN
+  DECLARE v_link BIGINT UNSIGNED;
   CALL sp_assert_actor(p_actor_id, p_tenant_id, 'tenant.integrations.manage');
-  UPDATE tenant_integration SET status = 'DISABLED', api_key_enc = '', updated_by = p_actor_id WHERE tenant_id = p_tenant_id AND provider = 'IGDT';
+  SET v_link = (SELECT link_key_id FROM tenant_integration WHERE tenant_id = p_tenant_id AND provider = 'IGDT');
+  UPDATE tenant_integration SET status = 'DISABLED', api_key_enc = '', link_key_id = NULL, updated_by = p_actor_id WHERE tenant_id = p_tenant_id AND provider = 'IGDT';
   IF ROW_COUNT() = 0 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:NOT_FOUND'; END IF;
+  -- la llave BDT entregada a IGDT deja de servir
+  IF v_link IS NOT NULL THEN
+    UPDATE api_key SET status = 'REVOKED', updated_by = p_actor_id WHERE id = v_link AND status <> 'REVOKED';
+    CALL sp_audit_insert(p_tenant_id, p_actor_id, NULL, 'SET_STATUS', 'api_key', (SELECT uuid FROM api_key WHERE id = v_link),
+                         JSON_OBJECT('status', 'REVOKED', 'reason', 'IGDT_DISCONNECT'), p_ip);
+  END IF;
   CALL sp_audit_insert(p_tenant_id, p_actor_id, NULL, 'DISCONNECT', 'tenant_integration', 'IGDT', NULL, p_ip);
 END $$
 
@@ -70,6 +79,47 @@ BEGIN
     FROM tenant_integration ti JOIN tenant t ON t.id = ti.tenant_id AND t.status = 'ACTIVE' AND t.deleted_at IS NULL
    WHERE ti.provider = 'IGDT' AND ti.status = 'ACTIVE' AND (p_tenant_id IS NULL OR ti.tenant_id = p_tenant_id)
    ORDER BY ti.tenant_id;
+END $$
+
+-- Llave BDT automática para IGDT (alcance talent.read, ya habilitada): se crea solo si la integración está activa y
+-- el tenant aún no tiene una vigente. Devuelve created = 1 si la creó (la app la entrega a IGDT; si falla, la descarta
+-- con sp_igdt_link_key_drop). Sin actor: la llama la API (conexión, «Sincronizar ahora» o la sincronización periódica).
+DROP PROCEDURE IF EXISTS sp_igdt_link_key_create $$
+CREATE PROCEDURE sp_igdt_link_key_create(IN p_tenant_id BIGINT UNSIGNED, IN p_uuid CHAR(36), IN p_name VARCHAR(120),
+  IN p_prefix CHAR(12), IN p_hash CHAR(64))
+BEGIN
+  DECLARE v_status VARCHAR(10);
+  DECLARE v_link BIGINT UNSIGNED;
+  DECLARE v_created TINYINT DEFAULT 0;
+  DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN ROLLBACK; RESIGNAL; END;
+  START TRANSACTION;
+  SELECT status, link_key_id INTO v_status, v_link FROM tenant_integration
+   WHERE tenant_id = p_tenant_id AND provider = 'IGDT' FOR UPDATE;
+  IF v_status = 'ACTIVE' AND NOT EXISTS (SELECT 1 FROM api_key WHERE id = v_link AND status = 'ENABLED' AND deleted_at IS NULL)
+     AND EXISTS (SELECT 1 FROM tenant WHERE id = p_tenant_id AND status = 'ACTIVE' AND deleted_at IS NULL) THEN
+    INSERT INTO api_key (uuid, tenant_id, name, key_prefix, key_hash, scopes, status, enabled_at)
+    VALUES (p_uuid, p_tenant_id, p_name, p_prefix, p_hash, JSON_ARRAY('talent.read'), 'ENABLED', NOW(3));
+    UPDATE tenant_integration SET link_key_id = LAST_INSERT_ID() WHERE tenant_id = p_tenant_id AND provider = 'IGDT';
+    CALL sp_audit_insert(p_tenant_id, NULL, NULL, 'CREATE', 'api_key', p_uuid,
+                         JSON_OBJECT('prefix', p_prefix, 'reason', 'IGDT_LINK', 'scopes', JSON_ARRAY('talent.read')), NULL);
+    SET v_created = 1;
+  END IF;
+  COMMIT;
+  SELECT v_created AS created;
+END $$
+
+-- Descarta la llave automática que IGDT no recibió (o que IGDT dejó de usar): revocada y eliminada, y el tenant queda
+-- sin vincular para reintentar.
+DROP PROCEDURE IF EXISTS sp_igdt_link_key_drop $$
+CREATE PROCEDURE sp_igdt_link_key_drop(IN p_tenant_id BIGINT UNSIGNED, IN p_uuid CHAR(36), IN p_reason VARCHAR(60))
+BEGIN
+  DECLARE v_id BIGINT UNSIGNED;
+  SET v_id = (SELECT id FROM api_key WHERE uuid = p_uuid AND tenant_id = p_tenant_id);
+  IF v_id IS NOT NULL THEN
+    UPDATE tenant_integration SET link_key_id = NULL WHERE tenant_id = p_tenant_id AND provider = 'IGDT' AND link_key_id = v_id;
+    UPDATE api_key SET status = 'REVOKED', deleted_at = IFNULL(deleted_at, NOW(3)) WHERE id = v_id;
+    CALL sp_audit_insert(p_tenant_id, NULL, NULL, 'SET_STATUS', 'api_key', p_uuid, JSON_OBJECT('status', 'REVOKED', 'reason', p_reason), NULL);
+  END IF;
 END $$
 
 -- Carga inicial: clientes y perfiles que usa el tenant (los suyos y los globales de BDT) y sus contactos.

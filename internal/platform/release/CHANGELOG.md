@@ -3,6 +3,13 @@
 Formato: `## vMAYOR.MENOR — AAAA-MM-DD`, seguido de los cambios en viñetas (español). Al publicar una versión se
 sube `VERSION` y se agrega su sección aquí: la API la registra al desplegarse en cada ambiente y la notifica.
 
+## v1.7 — 2026-11-10
+- Al conectar la empresa con IGDT, BDT le entrega automáticamente una llave de solo lectura («IGDT (automática)») para que IGDT consulte la ficha, los CV y las postulaciones de los candidatos. Si IGDT no la recibe, se reintenta sola; al desconectar, la llave se revoca.
+- Nueva API de integración: ficha completa del candidato y descarga de sus CV (original y formato empresa), solo para talentos que postulan en algún requerimiento de la empresa. Cada consulta queda en la auditoría.
+- Los cambios de fecha de inicio registrados en IGDT se reflejan en el candidato y en su línea de tiempo.
+- Si el cliente revoca un ingreso en IGDT, el candidato deja de figurar como ingresado y se avisa a los responsables del RQ y a quienes pueden reabrirlo (el RQ no se reabre solo).
+- La línea de tiempo del postulante muestra el ingreso registrado en IGDT con su fecha de inicio.
+
 ## v1.6 — 2026-11-09
 - IGDT recibe la fecha de registro del requerimiento y la configuración de alertas de RQ sin movimiento, para mostrar las mismas vistas y etiquetas del tablero. Al cambiar los días de alerta se reenvían los requerimientos abiertos.
 

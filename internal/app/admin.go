@@ -273,15 +273,20 @@ func (s *ApiKeyService) Create(ctx context.Context, p *domain.Principal, ip stri
 			return nil, domain.NewError("APIKEY_SCOPE")
 		}
 	}
-	prefix := strings.ToLower(tokens.Random(9))[:12]
-	prefix = strings.NewReplacer("-", "x", "_", "y").Replace(prefix)
-	secret := "bdt_" + prefix + "_" + tokens.Random(32)
+	prefix, secret := newApiKeySecret()
 	k, err := s.Repo.Create(ctx, meta(p, ip), tenantID, uuid.NewString(), name, prefix, tokens.Keyed(s.Pepper, secret), scopes, exp)
 	if err != nil {
 		return nil, err
 	}
 	k.Secret = secret
 	return k, nil
+}
+
+// newApiKeySecret genera una key bdt_<prefijo 12>_<secreto> (el prefijo es visible; del secreto solo se guarda el HMAC).
+func newApiKeySecret() (prefix, secret string) {
+	prefix = strings.ToLower(tokens.Random(9))[:12]
+	prefix = strings.NewReplacer("-", "x", "_", "y").Replace(prefix)
+	return prefix, "bdt_" + prefix + "_" + tokens.Random(32)
 }
 
 func (s *ApiKeyService) List(ctx context.Context, p *domain.Principal, tenantID *uint64) ([]domain.ApiKey, error) {

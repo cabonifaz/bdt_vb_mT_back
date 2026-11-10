@@ -285,6 +285,11 @@ func (s *IGDTService) hireDocs(ctx context.Context, tid uint64, ids []string) (m
 
 // decryptKeys reemplaza las claves indicadas ("<x>Enc", base64) por "<x>" descifrado, a cualquier profundidad.
 func decryptKeys(c ports.Cipher, doc json.RawMessage, keys ...string) json.RawMessage {
+	return decryptKeysOpt(c, doc, false, keys...)
+}
+
+// decryptKeysOpt: como decryptKeys; con nullEmpty los valores vacíos o ausentes quedan en null en vez de "".
+func decryptKeysOpt(c ports.Cipher, doc json.RawMessage, nullEmpty bool, keys ...string) json.RawMessage {
 	var v any
 	if json.Unmarshal(doc, &v) != nil {
 		return doc
@@ -302,7 +307,11 @@ func decryptKeys(c ports.Cipher, doc json.RawMessage, keys ...string) json.RawMe
 						}
 					}
 					delete(t, k)
-					t[strings.TrimSuffix(k, "Enc")] = plain
+					if plain == "" && nullEmpty {
+						t[strings.TrimSuffix(k, "Enc")] = nil
+					} else {
+						t[strings.TrimSuffix(k, "Enc")] = plain
+					}
 					continue
 				}
 				walk(val)
@@ -336,8 +345,8 @@ func (s *IGDTService) resendAll(ctx context.Context, tid uint64) error {
 	return s.drain(ctx, targets[0])
 }
 
-// pullHires lee los ingresos registrados en IGDT y los aplica (candidato ingresado, RQ cerrado si cubrió sus
-// vacantes). Sin el alcance hires.read en el token se reintenta cada 15 minutos para no saturar.
+// pullHires lee los eventos de ingreso de IGDT y los aplica (candidato ingresado, RQ cerrado si cubrió sus
+// vacantes, cambio de fecha de inicio o ingreso revocado). Sin el alcance hires.read en el token se reintenta cada 15 minutos para no saturar.
 func (s *IGDTService) pullHires(ctx context.Context, t ports.IGDTTarget) {
 	if s.Hires == nil {
 		return
@@ -371,13 +380,20 @@ func (s *IGDTService) pullHires(ctx context.Context, t ports.IGDTTarget) {
 		if res.Next == cursor {
 			return
 		}
-		closed, err := s.Repo.ApplyHires(ctx, t.TenantID, res.Events, res.Next)
+		applied, err := s.Repo.ApplyHires(ctx, t.TenantID, res.Events, res.Next)
 		if err != nil {
 			slog.Warn("igdt: no se pudieron aplicar los ingresos", "tenant", t.Slug, "err", err)
 			return
 		}
-		if len(closed) > 0 {
-			slog.Info("igdt: RQ cerrados por ingresos registrados", "tenant", t.Slug, "rqs", closed)
+		if len(applied.Closed) > 0 {
+			slog.Info("igdt: RQ cerrados por ingresos registrados", "tenant", t.Slug, "rqs", applied.Closed)
+		}
+		// ingreso revocado por el cliente: el RQ queda sin cubrir (no se reabre solo); se avisa a quienes deciden
+		for _, h := range applied.Revoked {
+			slog.Info("igdt: ingreso revocado", "tenant", t.Slug, "rq", h.RQCode, "candidate", h.CandidateID)
+			if s.Notifier != nil {
+				s.Notifier.HireRevoked(ctx, t.TenantID, t.Slug, h)
+			}
 		}
 		// los RQ con ingresos quedaron en la cola: se reenvían a IGDT ya, sin esperar la próxima vuelta
 		if err := s.drain(ctx, t); err != nil {

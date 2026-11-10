@@ -41,4 +41,5 @@ const (
 	AudienceAll         = "ALL"
 	AudienceTenantRoles = "TENANT_ROLES" // usuarios del tenant con alguno de los roles indicados
 	AudienceRQTeam      = "RQ_TEAM"      // responsables del RQ (entidad) y usuarios del tenant con los roles indicados
+	AudienceRQReopen    = "RQ_REOPEN"    // responsables del RQ (entidad) y usuarios del tenant con rq.reopen
 )

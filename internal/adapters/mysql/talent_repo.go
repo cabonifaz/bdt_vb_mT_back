@@ -356,6 +356,33 @@ func (r TalentRepo) GetFile(ctx context.Context, m ports.Meta, tenantID uint64, 
 	return &f, nil
 }
 
+func (r TalentRepo) IntegrationDossier(ctx context.Context, tenantID, apiKeyID uint64, talentID, ip string) (json.RawMessage, error) {
+	docs, err := RequirementRepo(r).rawDocs(ctx, "sp_integration_talent_dossier", tenantID, apiKeyID, talentID, nullStr(ip))
+	if err != nil {
+		return nil, err
+	}
+	if len(docs) == 0 {
+		return nil, domain.NewError("TALENT_NOT_FOUND")
+	}
+	return docs[0], nil
+}
+
+func (r TalentRepo) IntegrationFile(ctx context.Context, tenantID, apiKeyID uint64, talentID, fileID, ip string) (*domain.FileObject, error) {
+	rs, err := r.call(ctx, "sp_integration_talent_file", tenantID, apiKeyID, talentID, fileID, nullStr(ip))
+	if err != nil {
+		return nil, err
+	}
+	defer rs.Close()
+	var f domain.FileObject
+	var tid sql.NullInt64
+	rs.Next()
+	if err := rs.One(&f.ID, &f.UUID, &tid, &f.OwnerType, &f.Category, &f.StorageKey, &f.OriginalName, &f.MimeType,
+		&f.Size, &f.SHA256, &f.Encrypted); err != nil {
+		return nil, err
+	}
+	return &f, nil
+}
+
 func (r TalentRepo) DeleteFile(ctx context.Context, m ports.Meta, tenantID uint64, uuid string) error {
 	return r.exec(ctx, "sp_talent_file_delete", m.ActorID, tenantID, uuid, nullStr(m.IP))
 }

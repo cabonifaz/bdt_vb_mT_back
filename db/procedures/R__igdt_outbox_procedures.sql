@@ -247,35 +247,78 @@ DELIMITER ;
 
 DELIMITER $$
 
--- Ingresos registrados en IGDT (eventos HIRED desde el cursor): marca a los candidatos como ingresados y cierra como
--- Atendido el RQ abierto que ya tiene tantos ingresos (vigentes) como vacantes. Devuelve los RQ cerrados.
+-- Eventos de ingreso registrados en IGDT (desde el cursor), en orden:
+--   HIRED: marca al candidato como ingresado (hired_at, hire_start_date).
+--   START_CHANGED: al candidato ya ingresado le cambia la fecha de inicio (evento HIRE_START_CHANGED).
+--   REVOKED: el cliente revocó el ingreso antes de empezar: el candidato deja de estar ingresado (evento HIRE_REVOKED). El RQ
+--     cerrado NO se reabre solo (eso lo decide selección); la API avisa a los responsables y a quienes pueden reabrir.
+-- Cierra como Atendido el RQ abierto que ya tiene tantos ingresos (vigentes) como vacantes. Los RQ afectados vuelven a
+-- publicarse en IGDT. Devuelve: (1) los RQ cerrados; (2) los ingresos revocados (para avisar).
 DROP PROCEDURE IF EXISTS sp_igdt_apply_hires $$
 CREATE PROCEDURE sp_igdt_apply_hires(IN p_tenant_id BIGINT UNSIGNED, IN p_events JSON, IN p_cursor BIGINT UNSIGNED)
 BEGIN
   DECLARE v_attended BIGINT UNSIGNED;
+  DECLARE v_done TINYINT DEFAULT 0;
+  DECLARE v_cand, v_rq BIGINT UNSIGNED;
+  DECLARE v_hired_at DATETIME(3);
+  DECLARE v_old_start DATE;
+  DECLARE e_type VARCHAR(20);
+  DECLARE e_cid CHAR(36);
+  DECLARE e_start, e_prev DATE;
+  DECLARE e_position VARCHAR(150);
+  DECLARE e_reason VARCHAR(500);
+  DECLARE cur_ev CURSOR FOR
+    SELECT j.type, j.cid, j.start_date, j.prev_start, j.position, j.reason
+      FROM JSON_TABLE(IFNULL(p_events, JSON_ARRAY()), '$[*]' COLUMNS (
+             ord FOR ORDINALITY,
+             type VARCHAR(20) PATH '$.type', cid CHAR(36) PATH '$.candidateId',
+             start_date DATE PATH '$.startDate' NULL ON EMPTY NULL ON ERROR,
+             prev_start DATE PATH '$.previousStartDate' NULL ON EMPTY NULL ON ERROR,
+             position VARCHAR(150) PATH '$.position' NULL ON EMPTY NULL ON ERROR,
+             reason VARCHAR(500) PATH '$.reason' NULL ON EMPTY NULL ON ERROR)) j
+     WHERE j.type IN ('HIRED', 'START_CHANGED', 'REVOKED')
+     ORDER BY j.ord;
+  DECLARE CONTINUE HANDLER FOR NOT FOUND SET v_done = 1;
   DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN ROLLBACK; RESIGNAL; END;
   SET v_attended = (SELECT i.id FROM master_item i JOIN master_table t ON t.id = i.master_table_id AND t.code = 'RQ_STATUS'
                      WHERE i.code = 'ATTENDED' AND i.tenant_id IS NULL AND i.deleted_at IS NULL);
-  DROP TEMPORARY TABLE IF EXISTS tmp_igdt_hired;
-  CREATE TEMPORARY TABLE tmp_igdt_hired (candidate_id BIGINT UNSIGNED PRIMARY KEY, requirement_id BIGINT UNSIGNED,
-    start_date DATE NULL, position VARCHAR(150) NULL) ENGINE=MEMORY;
-  INSERT IGNORE INTO tmp_igdt_hired
-  SELECT rc.id, rc.requirement_id, j.start_date, j.position
-    FROM JSON_TABLE(IFNULL(p_events, JSON_ARRAY()), '$[*]' COLUMNS (
-           type VARCHAR(20) PATH '$.type', cid CHAR(36) PATH '$.candidateId',
-           start_date DATE PATH '$.startDate' NULL ON EMPTY NULL ON ERROR,
-           position VARCHAR(150) PATH '$.position' NULL ON EMPTY NULL ON ERROR)) j
-    JOIN requirement_candidate rc ON rc.uuid = j.cid
-    JOIN requirement r ON r.id = rc.requirement_id AND r.tenant_id = p_tenant_id
-   WHERE j.type = 'HIRED' AND rc.hired_at IS NULL;
   DROP TEMPORARY TABLE IF EXISTS tmp_igdt_rqs;
   CREATE TEMPORARY TABLE tmp_igdt_rqs (id BIGINT UNSIGNED PRIMARY KEY) ENGINE=MEMORY;
-  INSERT IGNORE INTO tmp_igdt_rqs SELECT DISTINCT requirement_id FROM tmp_igdt_hired;
+  DROP TEMPORARY TABLE IF EXISTS tmp_igdt_revoked;
+  CREATE TEMPORARY TABLE tmp_igdt_revoked (candidate_id BIGINT UNSIGNED PRIMARY KEY, reason VARCHAR(500) NULL) ENGINE=MEMORY;
   START TRANSACTION;
-  INSERT INTO requirement_candidate_event (candidate_id, type, data)
-  SELECT h.candidate_id, 'HIRED', JSON_OBJECT('startDate', h.start_date, 'position', h.position, 'source', 'IGDT') FROM tmp_igdt_hired h;
-  UPDATE requirement_candidate rc JOIN tmp_igdt_hired h ON h.candidate_id = rc.id
-     SET rc.hired_at = NOW(3), rc.hire_start_date = h.start_date;
+  OPEN cur_ev;
+  ev: LOOP
+    FETCH cur_ev INTO e_type, e_cid, e_start, e_prev, e_position, e_reason;
+    IF v_done = 1 THEN LEAVE ev; END IF;
+    -- SET (SELECT ...) no dispara NOT FOUND: un candidato inexistente no corta el recorrido
+    SET v_cand = (SELECT rc.id FROM requirement_candidate rc JOIN requirement r ON r.id = rc.requirement_id AND r.tenant_id = p_tenant_id
+                   WHERE rc.uuid = e_cid LIMIT 1);
+    IF v_cand IS NOT NULL THEN
+      SET v_rq = (SELECT requirement_id FROM requirement_candidate WHERE id = v_cand);
+      SET v_hired_at = (SELECT hired_at FROM requirement_candidate WHERE id = v_cand);
+      SET v_old_start = (SELECT hire_start_date FROM requirement_candidate WHERE id = v_cand);
+      IF e_type = 'HIRED' AND v_hired_at IS NULL THEN
+        INSERT INTO requirement_candidate_event (candidate_id, type, data)
+        VALUES (v_cand, 'HIRED', JSON_OBJECT('startDate', e_start, 'position', e_position, 'source', 'IGDT'));
+        UPDATE requirement_candidate SET hired_at = NOW(3), hire_start_date = e_start WHERE id = v_cand;
+        DELETE FROM tmp_igdt_revoked WHERE candidate_id = v_cand;
+        INSERT IGNORE INTO tmp_igdt_rqs VALUES (v_rq);
+      ELSEIF e_type = 'START_CHANGED' AND v_hired_at IS NOT NULL AND e_start IS NOT NULL AND NOT (v_old_start <=> e_start) THEN
+        INSERT INTO requirement_candidate_event (candidate_id, type, data)
+        VALUES (v_cand, 'HIRE_START_CHANGED', JSON_OBJECT('from', IFNULL(v_old_start, e_prev), 'to', e_start, 'reason', e_reason, 'source', 'IGDT'));
+        UPDATE requirement_candidate SET hire_start_date = e_start WHERE id = v_cand;
+        INSERT IGNORE INTO tmp_igdt_rqs VALUES (v_rq);
+      ELSEIF e_type = 'REVOKED' AND v_hired_at IS NOT NULL THEN
+        INSERT INTO requirement_candidate_event (candidate_id, type, data)
+        VALUES (v_cand, 'HIRE_REVOKED', JSON_OBJECT('startDate', v_old_start, 'reason', e_reason, 'source', 'IGDT'));
+        UPDATE requirement_candidate SET hired_at = NULL, hire_start_date = NULL WHERE id = v_cand;
+        INSERT INTO tmp_igdt_revoked VALUES (v_cand, e_reason) ON DUPLICATE KEY UPDATE reason = VALUES(reason);
+        INSERT IGNORE INTO tmp_igdt_rqs VALUES (v_rq);
+      END IF;
+    END IF;
+  END LOOP;
+  CLOSE cur_ev;
   -- RQ abiertos con todas sus vacantes cubiertas por ingresos vigentes: se cierran como Atendido
   DROP TEMPORARY TABLE IF EXISTS tmp_igdt_closed;
   CREATE TEMPORARY TABLE tmp_igdt_closed (id BIGINT UNSIGNED PRIMARY KEY) ENGINE=MEMORY;
@@ -296,13 +339,22 @@ BEGIN
   INSERT INTO audit_log (tenant_id, user_id, api_key_id, action, entity, entity_id, detail, ip)
   SELECT p_tenant_id, NULL, NULL, 'AUTO_CLOSE', 'requirement', r.uuid, JSON_OBJECT('reason', 'IGDT_HIRES', 'to', 'ATTENDED'), NULL
     FROM tmp_igdt_closed c JOIN requirement r ON r.id = c.id;
+  INSERT INTO audit_log (tenant_id, user_id, api_key_id, action, entity, entity_id, detail, ip)
+  SELECT p_tenant_id, NULL, NULL, 'HIRE_REVOKED', 'requirement', r.uuid, JSON_OBJECT('candidate', rc.uuid, 'reason', x.reason, 'source', 'IGDT'), NULL
+    FROM tmp_igdt_revoked x JOIN requirement_candidate rc ON rc.id = x.candidate_id JOIN requirement r ON r.id = rc.requirement_id;
   -- el RQ (con sus postulantes ingresados) vuelve a publicarse en IGDT
   INSERT INTO igdt_outbox (tenant_id, kind, entity_uuid)
   SELECT p_tenant_id, 'RQ', r.uuid FROM tmp_igdt_rqs x JOIN requirement r ON r.id = x.id
   ON DUPLICATE KEY UPDATE next_at = NOW(3), attempts = 0;
   SELECT r.uuid, r.code FROM tmp_igdt_closed c JOIN requirement r ON r.id = c.id;
-  DROP TEMPORARY TABLE IF EXISTS tmp_igdt_hired;
+  SELECT r.uuid AS rq_uuid, r.code, r.title, rc.uuid AS candidate_uuid,
+         CONCAT_WS(' ', tl.first_name, tl.last_name, tl.second_last_name) AS talent_name, IFNULL(x.reason, '') AS reason
+    FROM tmp_igdt_revoked x
+    JOIN requirement_candidate rc ON rc.id = x.candidate_id
+    JOIN requirement r ON r.id = rc.requirement_id
+    JOIN talent tl ON tl.id = rc.talent_id;
   DROP TEMPORARY TABLE IF EXISTS tmp_igdt_rqs;
+  DROP TEMPORARY TABLE IF EXISTS tmp_igdt_revoked;
   DROP TEMPORARY TABLE IF EXISTS tmp_igdt_closed;
 END $$
 

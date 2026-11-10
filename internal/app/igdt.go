@@ -26,12 +26,19 @@ type IGDTService struct {
 	Pusher ports.IGDTPusher
 	Hires  ports.IGDTHiresReader
 	Cipher ports.Cipher
+	// Pepper: el de las API keys de BDT (para crear la llave BDT automática que se entrega a IGDT)
+	Pepper []byte
+	// Notifier avisa de los ingresos revocados en IGDT
+	Notifier IGDTNotifier
 
 	mu    sync.Mutex
 	cache map[uint64]igdtActive
 	kick  chan struct{}
 	// hiresWait: hasta cuándo no leer ingresos de un tenant (token sin hires.read)
 	hiresWait map[uint64]time.Time
+	// linking / linkWait: entrega en curso de la llave BDT y próximo reintento, por tenant
+	linking  map[uint64]bool
+	linkWait map[uint64]time.Time
 }
 
 type igdtActive struct {
@@ -144,6 +151,11 @@ func (s *IGDTService) Disconnect(ctx context.Context, p *domain.Principal, ip st
 	if err != nil {
 		return err
 	}
+	// la llave BDT se retira de IGDT mientras aún tenemos su token (Disable lo borra y revoca la llave)
+	if _, err := s.Repo.Status(ctx, meta(p, ""), tid); err != nil { // exige el permiso antes de llamar a IGDT
+		return err
+	}
+	s.unlink(ctx, tid)
 	err = s.Repo.Disable(ctx, meta(p, ip), tid)
 	s.forget(tid)
 	return err
@@ -173,11 +185,11 @@ func (s *IGDTService) syncTenant(ctx context.Context, tid uint64) error {
 	if len(targets) == 0 {
 		return domain.NewError("IGDT_NOT_CONNECTED")
 	}
-	return s.sync(ctx, targets[0])
+	return s.sync(ctx, targets[0], true)
 }
 
 // sync trae las páginas de cambios desde el cursor y las aplica (cada página avanza el cursor).
-func (s *IGDTService) sync(ctx context.Context, t ports.IGDTTarget) error {
+func (s *IGDTService) sync(ctx context.Context, t ports.IGDTTarget, force bool) error {
 	key, err := s.Cipher.Decrypt(t.KeyEnc)
 	if err != nil || key == "" {
 		return domain.NewError("IGDT_KEY_INVALID")
@@ -195,9 +207,11 @@ func (s *IGDTService) sync(ctx context.Context, t ports.IGDTTarget) error {
 		}
 		cursor = res.Next
 		if !res.More {
-			return nil
+			break
 		}
 	}
+	// IGDT recibe la llave BDT del tenant si aún no la tiene (lee fichas y CV de los candidatos)
+	s.ensureLink(ctx, t, key, force)
 	return nil
 }
 
@@ -219,7 +233,7 @@ func (s *IGDTService) Watch(ctx context.Context, every time.Duration) {
 			slog.Warn("igdt: no se pudo leer los tenants conectados", "err", err)
 		}
 		for _, t := range targets {
-			if err := s.sync(ctx, t); err != nil && !errors.Is(err, context.Canceled) {
+			if err := s.sync(ctx, t, false); err != nil && !errors.Is(err, context.Canceled) {
 				slog.Warn("igdt: sincronización fallida", "tenant", t.Slug, "err", domain.AsError(err).Code)
 			}
 		}

@@ -667,7 +667,8 @@ BEGIN
            'client', c.label_i18n, 'profile', p.label_i18n,
            'status', JSON_OBJECT('code', s.code, 'label', s.label_i18n, 'group', s.str1),
            'stage', JSON_OBJECT('code', cs.code, 'label', cs.label_i18n), 'addedAt', rc.created_at,
-           'resignation', IF(rc.resigned_at IS NULL, NULL, JSON_OBJECT('at', rc.resigned_at, 'offboard', rc.offboard_status, 'offboardAt', rc.offboard_at))) AS doc
+           'resignation', IF(rc.resigned_at IS NULL, NULL, JSON_OBJECT('at', rc.resigned_at, 'offboard', rc.offboard_status, 'offboardAt', rc.offboard_at)),
+           'hiredAt', rc.hired_at, 'hireStartDate', rc.hire_start_date) AS doc
     FROM requirement_candidate rc
     JOIN requirement r ON r.id = rc.requirement_id AND r.deleted_at IS NULL AND r.tenant_id = p_tenant_id
     JOIN talent t ON t.id = rc.talent_id AND t.uuid = p_talent_uuid

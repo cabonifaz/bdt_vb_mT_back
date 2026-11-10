@@ -3,13 +3,25 @@
   "info": {
     "title": "Banco de Talentos - API de integración",
     "version": "1.0.0",
-    "description": "API para integrar sistemas externos con el Banco de Talentos. Cada API key pertenece a un tenant y debe ser habilitada por el Super Administrador. Envíe la key en la cabecera X-Api-Key. Límite: 300 solicitudes por minuto por IP."
+    "description": "API para integrar sistemas externos con el Banco de Talentos. Cada API key pertenece a un tenant y debe ser habilitada por el Super Administrador. Envíe la key en la cabecera X-Api-Key. Límite: 300 solicitudes por minuto por IP. Alcances: masters.read (catálogos) y talent.read (ficha y CV de candidatos)."
   },
-  "servers": [{ "url": "/integration/v1" }],
-  "security": [{ "ApiKey": [] }],
+  "servers": [
+    {
+      "url": "/integration/v1"
+    }
+  ],
+  "security": [
+    {
+      "ApiKey": []
+    }
+  ],
   "components": {
     "securitySchemes": {
-      "ApiKey": { "type": "apiKey", "in": "header", "name": "X-Api-Key" }
+      "ApiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Api-Key"
+      }
     },
     "schemas": {
       "Error": {
@@ -18,8 +30,13 @@
           "error": {
             "type": "object",
             "properties": {
-              "code": { "type": "string", "example": "APIKEY_INVALID" },
-              "requestId": { "type": "string" }
+              "code": {
+                "type": "string",
+                "example": "APIKEY_INVALID"
+              },
+              "requestId": {
+                "type": "string"
+              }
             }
           }
         }
@@ -27,23 +44,616 @@
       "MasterItem": {
         "type": "object",
         "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "table": { "type": "string", "example": "LANGUAGE" },
-          "code": { "type": "string", "example": "EN" },
-          "label": { "type": "object", "additionalProperties": { "type": "string" }, "example": { "es": "Inglés", "en": "English" } },
-          "parentId": { "type": "string", "format": "uuid", "nullable": true },
-          "num1": { "type": "number", "nullable": true },
-          "str1": { "type": "string", "nullable": true },
-          "sortOrder": { "type": "integer" },
-          "isActive": { "type": "boolean" },
-          "isTenantOwned": { "type": "boolean" }
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "table": {
+            "type": "string",
+            "example": "LANGUAGE"
+          },
+          "code": {
+            "type": "string",
+            "example": "EN"
+          },
+          "label": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "example": {
+              "es": "Inglés",
+              "en": "English"
+            }
+          },
+          "parentId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "num1": {
+            "type": "number",
+            "nullable": true
+          },
+          "str1": {
+            "type": "string",
+            "nullable": true
+          },
+          "sortOrder": {
+            "type": "integer"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "isTenantOwned": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Application": {
+        "type": "object",
+        "description": "Postulación del talento en un requerimiento del tenant (mismos datos que la ficha del talento en BDT).",
+        "properties": {
+          "candidateId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requirementId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "code": {
+            "type": "string",
+            "example": "RQ-0042"
+          },
+          "title": {
+            "type": "string"
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "client": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "example": {
+              "es": "Perú",
+              "en": "Peru"
+            },
+            "nullable": true
+          },
+          "profile": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "example": {
+              "es": "Perú",
+              "en": "Peru"
+            },
+            "nullable": true
+          },
+          "status": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "example": "IN_SELECTION"
+              },
+              "label": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "example": {
+                  "es": "Perú",
+                  "en": "Peru"
+                },
+                "nullable": true
+              },
+              "group": {
+                "type": "string",
+                "example": "OPEN"
+              }
+            }
+          },
+          "stage": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "example": "INTERVIEW"
+              },
+              "label": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "example": {
+                  "es": "Perú",
+                  "en": "Peru"
+                },
+                "nullable": true
+              }
+            }
+          },
+          "addedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "resignation": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "at": {
+                "type": "string",
+                "format": "date-time",
+                "nullable": true
+              },
+              "offboard": {
+                "type": "string",
+                "nullable": true
+              },
+              "offboardAt": {
+                "type": "string",
+                "format": "date-time",
+                "nullable": true
+              }
+            }
+          },
+          "hiredAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Ingreso registrado en IGDT"
+          },
+          "hireStartDate": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          }
+        }
+      },
+      "TalentFile": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "CV",
+              "CV_TENANT_ES",
+              "CV_TENANT_EN"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": "string",
+            "example": "application/pdf"
+          },
+          "size": {
+            "type": "integer"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        }
+      },
+      "TalentDossier": {
+        "type": "object",
+        "description": "Ficha del talento (sin tarifas ni datos salariales). Las etiquetas son objetos por idioma ({\"es\",\"en\"}).",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "secondLastName": {
+            "type": "string",
+            "nullable": true
+          },
+          "headline": {
+            "type": "string",
+            "nullable": true
+          },
+          "docType": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "code": {
+                "type": "string",
+                "example": "DNI"
+              },
+              "label": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "example": {
+                  "es": "Perú",
+                  "en": "Peru"
+                },
+                "nullable": true
+              }
+            }
+          },
+          "docNumber": {
+            "type": "string",
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "phone": {
+            "type": "string",
+            "nullable": true
+          },
+          "birthDate": {
+            "type": "string",
+            "nullable": true,
+            "example": "1990-05-14"
+          },
+          "country": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "example": {
+              "es": "Perú",
+              "en": "Peru"
+            },
+            "nullable": true
+          },
+          "city": {
+            "type": "string",
+            "nullable": true
+          },
+          "originCountry": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "example": {
+              "es": "Perú",
+              "en": "Peru"
+            },
+            "nullable": true
+          },
+          "originCity": {
+            "type": "string",
+            "nullable": true
+          },
+          "linkedinUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "githubUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "summary": {
+            "type": "string",
+            "nullable": true
+          },
+          "availability": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "example": {
+              "es": "Perú",
+              "en": "Peru"
+            },
+            "nullable": true
+          },
+          "hasEquipment": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "avgRating": {
+            "type": "number",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "example": "ACTIVE"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "experiences": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "company": {
+                  "type": "string"
+                },
+                "position": {
+                  "type": "string"
+                },
+                "startDate": {
+                  "type": "string",
+                  "format": "date",
+                  "nullable": true
+                },
+                "endDate": {
+                  "type": "string",
+                  "format": "date",
+                  "nullable": true
+                },
+                "isCurrent": {
+                  "type": "boolean"
+                },
+                "months": {
+                  "type": "integer"
+                },
+                "functions": {
+                  "type": "string",
+                  "nullable": true
+                }
+              }
+            }
+          },
+          "educations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "institution": {
+                  "type": "string"
+                },
+                "career": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "grade": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "example": {
+                    "es": "Perú",
+                    "en": "Peru"
+                  },
+                  "nullable": true
+                },
+                "startDate": {
+                  "type": "string",
+                  "format": "date",
+                  "nullable": true
+                },
+                "endDate": {
+                  "type": "string",
+                  "format": "date",
+                  "nullable": true
+                },
+                "isCurrent": {
+                  "type": "boolean"
+                },
+                "datePrecision": {
+                  "type": "string",
+                  "nullable": true,
+                  "example": "MONTH"
+                }
+              }
+            }
+          },
+          "languages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "languageId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "language": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "example": {
+                    "es": "Perú",
+                    "en": "Peru"
+                  },
+                  "nullable": true
+                },
+                "level": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "example": {
+                    "es": "Perú",
+                    "en": "Peru"
+                  },
+                  "nullable": true
+                },
+                "levelCode": {
+                  "type": "string",
+                  "example": "B2"
+                },
+                "stars": {
+                  "type": "integer",
+                  "nullable": true
+                }
+              }
+            }
+          },
+          "techSkills": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "skillId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "label": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "example": {
+                    "es": "Perú",
+                    "en": "Peru"
+                  },
+                  "nullable": true
+                },
+                "years": {
+                  "type": "number",
+                  "nullable": true
+                }
+              }
+            }
+          },
+          "softSkills": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "skillId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "label": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "example": {
+                    "es": "Perú",
+                    "en": "Peru"
+                  },
+                  "nullable": true
+                }
+              }
+            }
+          },
+          "feedback": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "stars": {
+                  "type": "integer"
+                },
+                "comment": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "authorName": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "nullable": true
+                }
+              }
+            }
+          },
+          "cvId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Archivo del CV original (descargable en /talents/{id}/files/{cvId})"
+          },
+          "files": {
+            "type": "array",
+            "description": "Solo CV original y CV formato empresa (ES/EN)",
+            "items": {
+              "$ref": "#/components/schemas/TalentFile"
+            }
+          },
+          "applications": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Application"
+            }
+          }
         }
       }
     },
     "responses": {
-      "Unauthorized": { "description": "API key ausente o inválida", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-      "Forbidden": { "description": "API key no habilitada o sin el scope requerido", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-      "TooMany": { "description": "Límite de solicitudes superado" }
+      "Unauthorized": {
+        "description": "API key ausente o inválida",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "API key no habilitada o sin el scope requerido",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "TooMany": {
+        "description": "Límite de solicitudes superado"
+      },
+      "NotFound": {
+        "description": "No existe o no es candidato en un requerimiento del tenant",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
     }
   },
   "paths": {
@@ -53,12 +663,34 @@
         "responses": {
           "200": {
             "description": "Tenant y scopes de la key",
-            "content": { "application/json": { "schema": { "type": "object", "properties": {
-              "tenant": { "type": "string" }, "keyId": { "type": "string" },
-              "scopes": { "type": "array", "items": { "type": "string" } } } } } }
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "tenant": {
+                      "type": "string"
+                    },
+                    "keyId": {
+                      "type": "string"
+                    },
+                    "scopes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "$ref": "#/components/responses/Forbidden" }
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
         }
       }
     },
@@ -66,16 +698,141 @@
       "get": {
         "summary": "Catálogos (maestro de maestros) visibles para el tenant",
         "description": "Requiere el scope masters.read.",
-        "parameters": [{
-          "name": "tables", "in": "query", "required": false,
-          "description": "Códigos de catálogo separados por coma (LANGUAGE,CURRENCY,...)",
-          "schema": { "type": "string" }
-        }],
+        "parameters": [
+          {
+            "name": "tables",
+            "in": "query",
+            "required": false,
+            "description": "Códigos de catálogo separados por coma (LANGUAGE,CURRENCY,...)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "200": { "description": "Valores", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/MasterItem" } } } } },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "429": { "$ref": "#/components/responses/TooMany" }
+          "200": {
+            "description": "Valores",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MasterItem"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooMany"
+          }
+        }
+      }
+    },
+    "/talents/{id}": {
+      "get": {
+        "summary": "Ficha de un candidato",
+        "description": "Requiere el scope talent.read. Solo talentos que son candidatos (vigentes) en al menos un requerimiento del tenant de la key; si no, 404 TALENT_NOT_FOUND. Incluye datos personales, experiencia, estudios, idiomas, habilidades, valoraciones, archivos de CV y postulaciones. Cada lectura queda auditada.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Id (uuid) del talento",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ficha",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TalentDossier"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooMany"
+          }
+        }
+      }
+    },
+    "/talents/{id}/files/{fid}": {
+      "get": {
+        "summary": "Descarga un CV del candidato",
+        "description": "Requiere el scope talent.read. Solo archivos del talento de categoría CV, CV_TENANT_ES o CV_TENANT_EN, y si el talento es candidato en el tenant; si no, 404 FILE_NOT_FOUND / TALENT_NOT_FOUND. Responde el archivo (inline) con su Content-Type. Cada descarga queda auditada.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Id (uuid) del talento",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "fid",
+            "in": "path",
+            "required": true,
+            "description": "Id (uuid) del archivo",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Archivo",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooMany"
+          }
         }
       }
     }

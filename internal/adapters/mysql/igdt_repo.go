@@ -93,6 +93,25 @@ func (r IGDTRepo) SyncError(ctx context.Context, tenantID uint64, msg string) er
 	return r.exec(ctx, "sp_igdt_sync_error", tenantID, msg)
 }
 
+func (r IGDTRepo) LinkKeyCreate(ctx context.Context, tenantID uint64, uuid, name, prefix, hash string) (bool, error) {
+	rs, err := r.call(ctx, "sp_igdt_link_key_create", tenantID, uuid, name, prefix, hash)
+	if err != nil {
+		return false, err
+	}
+	defer rs.Close()
+	var created bool
+	if rs.Next() {
+		if err := rs.One(&created); err != nil {
+			return false, err
+		}
+	}
+	return created, rs.Close()
+}
+
+func (r IGDTRepo) LinkKeyDrop(ctx context.Context, tenantID uint64, uuid, reason string) error {
+	return r.exec(ctx, "sp_igdt_link_key_drop", tenantID, uuid, reason)
+}
+
 func (r IGDTRepo) TariffLookup(ctx context.Context, m ports.Meta, tenantID uint64, profileID string, clientID *string, date string) (json.RawMessage, error) {
 	return r.one(ctx, "sp_tariff_lookup", m.ActorID, tenantID, profileID, clientID, nullStr(date))
 }

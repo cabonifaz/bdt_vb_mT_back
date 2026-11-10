@@ -25,6 +25,9 @@ type IGDTClient interface {
 	WhoAmI(ctx context.Context, key string) (*IGDTIdentity, error)
 	Changes(ctx context.Context, key string, since uint64, limit int) (*IGDTChanges, error)
 	Import(ctx context.Context, key string, export json.RawMessage) (json.RawMessage, error)
+	// LinkBDT entrega a IGDT la llave BDT del tenant (PUT /integration/v1/bdt-link); UnlinkBDT la retira (DELETE).
+	LinkBDT(ctx context.Context, key, bdtKey string) error
+	UnlinkBDT(ctx context.Context, key string) error
 }
 
 // IGDTTarget: tenant con la integración activa (token cifrado) y su cursor de sincronización.
@@ -38,6 +41,17 @@ type IGDTTarget struct {
 	HiresCursor uint64
 }
 
+// IGDTRevokedHire: ingreso revocado en IGDT (el candidato ya no está ingresado; el RQ queda sin cubrir).
+type IGDTRevokedHire struct {
+	RQID, RQCode, RQTitle, CandidateID, TalentName, Reason string
+}
+
+// IGDTHiresApplied: resultado de aplicar una página de eventos de ingreso.
+type IGDTHiresApplied struct {
+	Closed  []string // códigos de los RQ cerrados como Atendido
+	Revoked []IGDTRevokedHire
+}
+
 type IGDTRepository interface {
 	IGDTOutboxRepository
 	Status(ctx context.Context, m Meta, tenantID uint64) (json.RawMessage, error)
@@ -49,6 +63,10 @@ type IGDTRepository interface {
 	ApplyMap(ctx context.Context, tenantID uint64, m json.RawMessage) error
 	ApplyChanges(ctx context.Context, tenantID uint64, changes json.RawMessage, cursor uint64) (int, error)
 	SyncError(ctx context.Context, tenantID uint64, msg string) error
+	// LinkKeyCreate crea la llave BDT automática (talent.read, habilitada) si el tenant no tiene una vigente; created = false si no.
+	LinkKeyCreate(ctx context.Context, tenantID uint64, uuid, name, prefix, hash string) (bool, error)
+	// LinkKeyDrop descarta la llave automática que IGDT no recibió (revocada) y deja al tenant sin vincular.
+	LinkKeyDrop(ctx context.Context, tenantID uint64, uuid, reason string) error
 	TariffLookup(ctx context.Context, m Meta, tenantID uint64, profileID string, clientID *string, date string) (json.RawMessage, error)
 }
 
@@ -91,8 +109,8 @@ type IGDTOutboxRepository interface {
 	OutboxStatus(ctx context.Context, tenantID uint64) (json.RawMessage, error)
 	RQSnapshots(ctx context.Context, tenantID uint64, ids []string) ([]json.RawMessage, error)
 	HireSnapshots(ctx context.Context, tenantID uint64, ids []string) ([]json.RawMessage, error)
-	// ApplyHires marca los ingresos y cierra los RQ cubiertos; devuelve los códigos de los RQ cerrados.
-	ApplyHires(ctx context.Context, tenantID uint64, events json.RawMessage, cursor uint64) ([]string, error)
+	// ApplyHires aplica los eventos de ingreso (HIRED, START_CHANGED, REVOKED) y cierra los RQ cubiertos.
+	ApplyHires(ctx context.Context, tenantID uint64, events json.RawMessage, cursor uint64) (*IGDTHiresApplied, error)
 }
 
 // IGDTHireEvents: una página de eventos de ingreso registrados en IGDT.

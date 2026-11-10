@@ -82,23 +82,36 @@ func (r IGDTRepo) HireSnapshots(ctx context.Context, tenantID uint64, ids []stri
 	return RequirementRepo(r).rawDocs(ctx, "sp_igdt_hire_snapshots", tenantID, string(b))
 }
 
-func (r IGDTRepo) ApplyHires(ctx context.Context, tenantID uint64, events json.RawMessage, cursor uint64) ([]string, error) {
+func (r IGDTRepo) ApplyHires(ctx context.Context, tenantID uint64, events json.RawMessage, cursor uint64) (*ports.IGDTHiresApplied, error) {
 	rs, err := r.call(ctx, "sp_igdt_apply_hires", tenantID, optJSON(events), cursor)
 	if err != nil {
 		return nil, err
 	}
 	defer rs.Close()
-	out := []string{}
-	if !rs.Next() {
-		return out, nil
-	}
-	err = rs.Each(func(scan func(...any) error) error {
-		var id, code string
-		if err := scan(&id, &code); err != nil {
-			return err
+	out := &ports.IGDTHiresApplied{Closed: []string{}, Revoked: []ports.IGDTRevokedHire{}}
+	if rs.Next() {
+		if err := rs.Each(func(scan func(...any) error) error {
+			var id, code string
+			if err := scan(&id, &code); err != nil {
+				return err
+			}
+			out.Closed = append(out.Closed, code)
+			return nil
+		}); err != nil {
+			return nil, err
 		}
-		out = append(out, code)
-		return nil
-	})
-	return out, err
+	}
+	if rs.Next() {
+		if err := rs.Each(func(scan func(...any) error) error {
+			var h ports.IGDTRevokedHire
+			if err := scan(&h.RQID, &h.RQCode, &h.RQTitle, &h.CandidateID, &h.TalentName, &h.Reason); err != nil {
+				return err
+			}
+			out.Revoked = append(out.Revoked, h)
+			return nil
+		}); err != nil {
+			return nil, err
+		}
+	}
+	return out, rs.Close()
 }

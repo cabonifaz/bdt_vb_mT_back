@@ -2,6 +2,7 @@ package ports
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/domain"
@@ -67,6 +68,9 @@ type TalentRepository interface {
 
 	CreateFile(ctx context.Context, m Meta, tenantID uint64, talentUUID string, f domain.FileObject) (*domain.TalentFile, error)
 	GetFile(ctx context.Context, m Meta, tenantID uint64, uuid string) (*domain.FileObject, error)
+	// API de integración (key talent.read): ficha y CV de un talento que es candidato en algún RQ del tenant (auditado con la key)
+	IntegrationDossier(ctx context.Context, tenantID, apiKeyID uint64, talentID, ip string) (json.RawMessage, error)
+	IntegrationFile(ctx context.Context, tenantID, apiKeyID uint64, talentID, fileID, ip string) (*domain.FileObject, error)
 	DeleteFile(ctx context.Context, m Meta, tenantID uint64, uuid string) error
 
 	Collections(ctx context.Context, m Meta, tenantID uint64) ([]CollectionRecord, error)

@@ -266,6 +266,34 @@ func (s *NotificationService) RQStaleSummary(ctx context.Context, list []ports.S
 	})
 }
 
+// HireRevoked avisa que el cliente revocó en IGDT el ingreso de un candidato: la vacante queda sin cubrir y el RQ (si
+// estaba cerrado) no se reabre solo. Llega a los responsables del RQ y a los usuarios que pueden reabrirlo (rq.reopen).
+func (s *NotificationService) HireRevoked(ctx context.Context, tenantID uint64, tenantSlug string, h ports.IGDTRevokedHire) {
+	payload, _ := json.Marshal(map[string]any{"name": h.TalentName, "code": h.RQCode, "title": h.RQTitle, "reason": h.Reason,
+		"candidateId": h.CandidateID})
+	in := ports.NotifyInput{ID: uuid.NewString(), Type: domain.NotifHireRevoked, EntityType: "REQUIREMENT", EntityID: h.RQID, Payload: payload}
+	res, err := s.Repo.NotifyUsers(context.WithoutCancel(ctx), ports.Meta{}, tenantID, in, ports.AudienceRQReopen, 0, nil)
+	if err != nil {
+		slog.Warn("no se pudo notificar el ingreso revocado", "rq", h.RQCode, "err", err)
+		return
+	}
+	if len(res.Targets) == 0 || s.Push == nil || !s.Push.Enabled() {
+		return
+	}
+	link := "/" + tenantSlug + "/requerimientos/" + h.RQID
+	go s.deliver(res.ID, res.Targets, func(locale string) pushMessage { return hireRevokedPush(locale, h, link, res.ID) })
+}
+
+func hireRevokedPush(locale string, h ports.IGDTRevokedHire, link, id string) pushMessage {
+	title := "Ingreso revocado en IGDT"
+	body := fmt.Sprintf("%s · %s. La vacante queda sin cubrir; reabre el RQ si corresponde.", h.TalentName, h.RQCode)
+	if strings.HasPrefix(locale, "en") {
+		title = "Hire revoked in IGDT"
+		body = fmt.Sprintf("%s · %s. The opening is no longer filled; reopen the requirement if needed.", h.TalentName, h.RQCode)
+	}
+	return pushMessage{Title: title, Body: body, URL: link, Tag: "hire-revoked-" + h.CandidateID, ID: id}
+}
+
 func rqStalePush(locale string, r ports.StaleRQ, link, id string) pushMessage {
 	title, body := "RQ sin movimiento", fmt.Sprintf("%s · %s: %d días sin cambios de etapa en sus postulantes", r.Code, r.Title, r.Days)
 	if r.Level >= 2 {
