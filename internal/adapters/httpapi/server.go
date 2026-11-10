@@ -159,6 +159,7 @@ func (s *Server) Handler() http.Handler {
 		// ficha y CV de los candidatos (IGDT los lee con la llave BDT automática)
 		r.With(s.requireScope("talent.read")).Get("/talents/{id}", s.integrationTalent)
 		r.With(s.requireScope("talent.read")).Get("/talents/{id}/files/{fid}", s.integrationTalentFile)
+		r.With(s.requireScope("talent.read")).Get("/talents/{id}/cv-source", s.integrationTalentCVSource)
 	})
 	return r
 }

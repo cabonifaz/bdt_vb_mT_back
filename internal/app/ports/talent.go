@@ -71,6 +71,8 @@ type TalentRepository interface {
 	// API de integración (key talent.read): ficha y CV de un talento que es candidato en algún RQ del tenant (auditado con la key)
 	IntegrationDossier(ctx context.Context, tenantID, apiKeyID uint64, talentID, ip string) (json.RawMessage, error)
 	IntegrationFile(ctx context.Context, tenantID, apiKeyID uint64, talentID, fileID, ip string) (*domain.FileObject, error)
+	// Insumos del CV con la marca del tenant: documento {talent, courseGradeId, template} e imágenes a incrustar
+	IntegrationCVSource(ctx context.Context, tenantID, apiKeyID uint64, talentID, lang, ip string) (json.RawMessage, []CVImage, error)
 	DeleteFile(ctx context.Context, m Meta, tenantID uint64, uuid string) error
 
 	Collections(ctx context.Context, m Meta, tenantID uint64) ([]CollectionRecord, error)
@@ -85,6 +87,15 @@ type TalentRepository interface {
 }
 
 // CollectionRecord trae el nombre del dueño cifrado.
+// CVImage: imagen de la plantilla del CV (HEADER, FOOTER, LOGO) o foto del talento (PHOTO) en el almacenamiento.
+type CVImage struct {
+	Kind       string
+	StorageKey string
+	MimeType   string
+	Size       int64
+	Encrypted  bool
+}
+
 type CollectionRecord struct {
 	domain.Collection
 	OwnerNameEnc []byte

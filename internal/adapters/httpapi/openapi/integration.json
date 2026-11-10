@@ -3,7 +3,7 @@
   "info": {
     "title": "Banco de Talentos - API de integración",
     "version": "1.0.0",
-    "description": "API para integrar sistemas externos con el Banco de Talentos. Cada API key pertenece a un tenant y debe ser habilitada por el Super Administrador. Envíe la key en la cabecera X-Api-Key. Límite: 300 solicitudes por minuto por IP. Alcances: masters.read (catálogos) y talent.read (ficha y CV de candidatos)."
+    "description": "API para integrar sistemas externos con el Banco de Talentos. Cada API key pertenece a un tenant y debe ser habilitada por el Super Administrador. Envíe la key en la cabecera X-Api-Key. Límite: 300 solicitudes por minuto por IP. Alcances: masters.read (catálogos) y talent.read (ficha, archivos e insumos del CV de candidatos)."
   },
   "servers": [
     {
@@ -230,7 +230,9 @@
             "enum": [
               "CV",
               "CV_TENANT_ES",
-              "CV_TENANT_EN"
+              "CV_TENANT_EN",
+              "DOCUMENT",
+              "CERTIFICATE"
             ]
           },
           "name": {
@@ -606,7 +608,7 @@
           },
           "files": {
             "type": "array",
-            "description": "Solo CV original y CV formato empresa (ES/EN)",
+            "description": "CV original, CV formato empresa (ES/EN), documentos y certificados del talento (descargables en /talents/{id}/files/{fid})",
             "items": {
               "$ref": "#/components/schemas/TalentFile"
             }
@@ -616,6 +618,336 @@
             "items": {
               "$ref": "#/components/schemas/Application"
             }
+          }
+        }
+      },
+      "CvSourceTalent": {
+        "type": "object",
+        "description": "Talento en la misma forma que usa el front de BDT para armar el CV (type Talent, solo los campos que usa buildCvData). Etiquetas de catálogo como objetos {\"es\",\"en\"}.",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "secondLastName": {
+            "type": "string",
+            "nullable": true
+          },
+          "headline": {
+            "type": "string",
+            "nullable": true
+          },
+          "summary": {
+            "type": "string",
+            "nullable": true
+          },
+          "city": {
+            "type": "string",
+            "nullable": true
+          },
+          "country": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "example": {
+              "es": "Perú",
+              "en": "Peru"
+            },
+            "description": "Etiqueta por idioma",
+            "nullable": true
+          },
+          "photoId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "experiences": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "company": {
+                  "type": "string"
+                },
+                "position": {
+                  "type": "string"
+                },
+                "startDate": {
+                  "type": "string",
+                  "format": "date",
+                  "nullable": true
+                },
+                "endDate": {
+                  "type": "string",
+                  "format": "date",
+                  "nullable": true
+                },
+                "isCurrent": {
+                  "type": "boolean"
+                },
+                "functions": {
+                  "type": "string",
+                  "nullable": true
+                }
+              }
+            }
+          },
+          "educations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "gradeId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "nullable": true
+                },
+                "grade": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "example": {
+                    "es": "Perú",
+                    "en": "Peru"
+                  },
+                  "description": "Etiqueta por idioma",
+                  "nullable": true
+                },
+                "institution": {
+                  "type": "string"
+                },
+                "career": {
+                  "type": "string"
+                },
+                "startDate": {
+                  "type": "string",
+                  "format": "date",
+                  "nullable": true
+                },
+                "endDate": {
+                  "type": "string",
+                  "format": "date",
+                  "nullable": true
+                },
+                "isCurrent": {
+                  "type": "boolean"
+                },
+                "datePrecision": {
+                  "type": "string",
+                  "example": "MONTH",
+                  "description": "YEAR: mostrar solo el año"
+                }
+              }
+            }
+          },
+          "techSkills": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "example": {
+                    "es": "Perú",
+                    "en": "Peru"
+                  },
+                  "description": "Etiqueta por idioma"
+                },
+                "years": {
+                  "type": "number"
+                }
+              }
+            }
+          },
+          "softSkills": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "example": {
+                    "es": "Perú",
+                    "en": "Peru"
+                  },
+                  "description": "Etiqueta por idioma"
+                }
+              }
+            }
+          },
+          "languages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "language": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "example": {
+                    "es": "Perú",
+                    "en": "Peru"
+                  },
+                  "description": "Etiqueta por idioma"
+                },
+                "level": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "example": {
+                    "es": "Perú",
+                    "en": "Peru"
+                  },
+                  "description": "Etiqueta por idioma"
+                }
+              }
+            }
+          }
+        }
+      },
+      "CvText": {
+        "type": "object",
+        "description": "Textos libres del CV traducidos con IA (igual que POST /talents/{id}/cv/translate de BDT). Los elementos se cruzan por id con experiences/educations del talento; title es el puesto o la carrera.",
+        "properties": {
+          "headline": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "experiences": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "functions": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "educations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "title": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "CvTemplate": {
+        "type": "object",
+        "description": "Plantilla del CV del tenant (como buildCvTemplate del front). Las imágenes van como data URL (máx. 2 MB c/u); null si no hay, no se pueden leer o superan el tope. Se entregan en su formato original (PNG, JPG, WEBP...): conviértalas si su generador de PDF no lo soporta.",
+        "properties": {
+          "displayName": {
+            "type": "string"
+          },
+          "colorPrimary": {
+            "type": "string",
+            "example": "#009688"
+          },
+          "colorSecondary": {
+            "type": "string",
+            "example": "#0B85C3"
+          },
+          "cvFooterText": {
+            "type": "string",
+            "nullable": true
+          },
+          "cvShowPhoto": {
+            "type": "boolean"
+          },
+          "cvStyle": {
+            "type": "object",
+            "nullable": true,
+            "description": "Formato del CV adoptado desde un CV de ejemplo, tal cual (nameAlign, nameColor, headingColor, headingRule, summaryHeading, boldPositions, footerBg, font)"
+          },
+          "header": {
+            "type": "string",
+            "nullable": true,
+            "example": "data:image/png;base64,iVBORw0KGgo...",
+            "description": "Cabecera a todo el ancho de la página"
+          },
+          "footer": {
+            "type": "string",
+            "nullable": true,
+            "example": "data:image/png;base64,iVBORw0KGgo...",
+            "description": "Imagen del pie"
+          },
+          "logo": {
+            "type": "string",
+            "nullable": true,
+            "example": "data:image/png;base64,iVBORw0KGgo...",
+            "description": "Logo (oscuro o normal) del tenant; solo si no hay cabecera"
+          },
+          "photo": {
+            "type": "string",
+            "nullable": true,
+            "example": "data:image/png;base64,iVBORw0KGgo...",
+            "description": "Foto del talento; solo si cvShowPhoto"
+          }
+        }
+      },
+      "CvSource": {
+        "type": "object",
+        "properties": {
+          "talent": {
+            "$ref": "#/components/schemas/CvSourceTalent"
+          },
+          "courseGradeId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Grado académico COURSE: los estudios con ese gradeId van como certificaciones"
+          },
+          "text": {
+            "$ref": "#/components/schemas/CvText"
+          },
+          "template": {
+            "$ref": "#/components/schemas/CvTemplate"
           }
         }
       }
@@ -779,8 +1111,8 @@
     },
     "/talents/{id}/files/{fid}": {
       "get": {
-        "summary": "Descarga un CV del candidato",
-        "description": "Requiere el scope talent.read. Solo archivos del talento de categoría CV, CV_TENANT_ES o CV_TENANT_EN, y si el talento es candidato en el tenant; si no, 404 FILE_NOT_FOUND / TALENT_NOT_FOUND. Responde el archivo (inline) con su Content-Type. Cada descarga queda auditada.",
+        "summary": "Descarga un archivo del candidato (CV, documento o certificado)",
+        "description": "Requiere el scope talent.read. Solo archivos del talento de categoría CV, CV_TENANT_ES, CV_TENANT_EN, DOCUMENT o CERTIFICATE, y si el talento es candidato en el tenant; si no, 404 FILE_NOT_FOUND / TALENT_NOT_FOUND. Responde el archivo (inline) con su Content-Type. Cada descarga queda auditada.",
         "parameters": [
           {
             "name": "id",
@@ -818,6 +1150,12 @@
                   "type": "string",
                   "format": "binary"
                 }
+              },
+              "image/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
               }
             }
           },
@@ -832,6 +1170,92 @@
           },
           "429": {
             "$ref": "#/components/responses/TooMany"
+          }
+        }
+      }
+    },
+    "/talents/{id}/cv-source": {
+      "get": {
+        "summary": "Insumos para generar el CV con la marca del tenant",
+        "description": "Requiere el scope talent.read. Solo talentos que son candidatos en algún requerimiento del tenant (si no, 404 TALENT_NOT_FOUND); cada lectura queda auditada. Devuelve el talento en la forma que usa BDT para armar el CV, el id del grado COURSE, la plantilla del tenant con sus imágenes y, con lang=en, los textos traducidos con IA (text; se omite con lang=es). Sin IA configurada responde 503 AI_NOT_CONFIGURED; si la IA falla, 502 AI_UNAVAILABLE.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "Id (uuid) del talento",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "lang",
+            "in": "query",
+            "required": false,
+            "description": "Idioma del CV (por defecto es)",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "es",
+                "en"
+              ],
+              "default": "es"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Insumos del CV",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CvSource"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "description": "lang inválido (VALIDATION)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/TooMany"
+          },
+          "502": {
+            "description": "La traducción con IA falló (AI_UNAVAILABLE)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "IA no configurada (AI_NOT_CONFIGURED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }

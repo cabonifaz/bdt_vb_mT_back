@@ -74,7 +74,7 @@ func (s *Server) integrationTalent(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(doc)
 }
 
-// GET /integration/v1/talents/{id}/files/{fid}: CV del candidato (scope talent.read).
+// GET /integration/v1/talents/{id}/files/{fid}: CV, documento o certificado del candidato (scope talent.read).
 func (s *Server) integrationTalentFile(w http.ResponseWriter, r *http.Request) {
 	f, data, err := s.Talents.IntegrationFile(r.Context(), apiClient(r), s.clientIP(r), chi.URLParam(r, "id"), chi.URLParam(r, "fid"))
 	if err != nil {
@@ -122,4 +122,17 @@ func safeFileName(name, id, mimeType string) string {
 		name = "cv-" + id + mimeExt[mimeType]
 	}
 	return name
+}
+
+// GET /integration/v1/talents/{id}/cv-source?lang=es|en: insumos para generar el CV con la marca del tenant
+// (scope talent.read).
+func (s *Server) integrationTalentCVSource(w http.ResponseWriter, r *http.Request) {
+	out, err := s.Talents.IntegrationCVSource(r.Context(), apiClient(r), s.clientIP(r), chi.URLParam(r, "id"),
+		strings.ToLower(strings.TrimSpace(r.URL.Query().Get("lang"))))
+	if err != nil {
+		s.writeErr(w, r, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, out)
 }

@@ -56,11 +56,19 @@ func (s *TalentService) TranslateCV(ctx context.Context, p *domain.Principal, id
 	for _, e := range t.Educations {
 		src.Educations = append(src.Educations, CVTextItem{ID: e.ID, Title: e.Career})
 	}
+	return s.translateCVText(ctx, *p.TenantID, src, lang)
+}
+
+// translateCVText traduce los textos del CV (lo usan la app y la API de integración); los tokens se cuentan al tenant.
+func (s *TalentService) translateCVText(ctx context.Context, tenantID uint64, src CVText, lang string) (*CVText, error) {
+	if s.Translator == nil {
+		return nil, domain.NewError("AI_NOT_CONFIGURED")
+	}
 	in, _ := json.Marshal(src)
 	raw, usage, err := s.Translator.TranslateJSON(ctx, in, lang)
 	// los tokens se cuentan por tenant aunque la respuesta no sirva; sin key no hay llamada
 	if code := domain.AsError(err).Code; err == nil || (code != "AI_NOT_CONFIGURED" && code != "VALIDATION") {
-		recordUsage(ctx, s.Usage, *p.TenantID, domain.UsageAITranslate, usage.Model, err == nil, usage)
+		recordUsage(ctx, s.Usage, tenantID, domain.UsageAITranslate, usage.Model, err == nil, usage)
 	}
 	if err != nil {
 		return nil, err

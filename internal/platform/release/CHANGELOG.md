@@ -3,6 +3,10 @@
 Formato: `## vMAYOR.MENOR — AAAA-MM-DD`, seguido de los cambios en viñetas (español). Al publicar una versión se
 sube `VERSION` y se agrega su sección aquí: la API la registra al desplegarse en cada ambiente y la notifica.
 
+## v1.8 — 2026-11-10
+- La API de integración entrega también los documentos y certificados del candidato (en la ficha y para descargar), además de sus CV. Cada descarga queda en la auditoría.
+- Nueva consulta de integración con los insumos del CV con la marca de la empresa (datos del candidato, plantilla con cabecera, pie, logo y foto, y en inglés los textos traducidos con IA), para que IGDT genere el mismo CV que BDT aunque no se haya guardado.
+
 ## v1.7 — 2026-11-10
 - Al conectar la empresa con IGDT, BDT le entrega automáticamente una llave de solo lectura («IGDT (automática)») para que IGDT consulte la ficha, los CV y las postulaciones de los candidatos. Si IGDT no la recibe, se reintenta sola; al desconectar, la llave se revoca.
 - Nueva API de integración: ficha completa del candidato y descarga de sus CV (original y formato empresa), solo para talentos que postulan en algún requerimiento de la empresa. Cada consulta queda en la auditoría.

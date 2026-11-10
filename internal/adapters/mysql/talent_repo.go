@@ -383,6 +383,38 @@ func (r TalentRepo) IntegrationFile(ctx context.Context, tenantID, apiKeyID uint
 	return &f, nil
 }
 
+func (r TalentRepo) IntegrationCVSource(ctx context.Context, tenantID, apiKeyID uint64, talentID, lang, ip string) (json.RawMessage, []ports.CVImage, error) {
+	rs, err := r.call(ctx, "sp_integration_talent_cv_source", tenantID, apiKeyID, talentID, lang, nullStr(ip))
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rs.Close()
+	var doc []byte
+	rs.Next()
+	if err := rs.One(&doc); err != nil {
+		if err == domain.ErrNotFound {
+			return nil, nil, domain.NewError("TALENT_NOT_FOUND")
+		}
+		return nil, nil, err
+	}
+	imgs := []ports.CVImage{}
+	if rs.Next() {
+		if err := rs.Each(func(scan func(...any) error) error {
+			var im ports.CVImage
+			var mime sql.NullString
+			if err := scan(&im.Kind, &im.StorageKey, &mime, &im.Size, &im.Encrypted); err != nil {
+				return err
+			}
+			im.MimeType = mime.String
+			imgs = append(imgs, im)
+			return nil
+		}); err != nil {
+			return nil, nil, err
+		}
+	}
+	return json.RawMessage(doc), imgs, nil
+}
+
 func (r TalentRepo) DeleteFile(ctx context.Context, m ports.Meta, tenantID uint64, uuid string) error {
 	return r.exec(ctx, "sp_talent_file_delete", m.ActorID, tenantID, uuid, nullStr(m.IP))
 }
