@@ -93,7 +93,7 @@ func Build(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, erro
 	go igdtSvc.Pump(ctx, 30*time.Second)
 	requirements.IGDT = igdtSvc
 	talents := &app.TalentService{Repo: mysql.TalentRepo{Store: store}, Cipher: cipher, Storage: files,
-		Translator: openAI, Reader: openAI, Usage: usageRepo, Notifier: notifications}
+		Translator: openAI, Reader: openAI, Usage: usageRepo, Notifier: notifications, PublicAppURL: cfg.PublicAppURL}
 	srv := httpapi.NewServer(httpapi.Config{CORSOrigins: cfg.CORSOrigins, TrustProxy: cfg.TrustProxy,
 		CookieSecure: !cfg.IsLocal(), RateGeneral: cfg.RateGeneralPerMin, RateAuth: cfg.RateAuthPerMin}, log, httpapi.Deps{
 		Auth:          auth,

@@ -3,6 +3,9 @@
 Formato: `## vMAYOR.MENOR — AAAA-MM-DD`, seguido de los cambios en viñetas (español). Al publicar una versión se
 sube `VERSION` y se agrega su sección aquí: la API la registra al desplegarse en cada ambiente y la notifica.
 
+## v1.10 — 2026-11-11
+- Insumos del CV para IGDT: cuando la empresa no tiene cabecera de CV ni logo subido, se entrega el logo fijo de la empresa (el mismo que usa BDT en sus CV), para que el CV generado en IGDT tenga el mismo formato que en BDT.
+
 ## v1.9 — 2026-11-10
 - Nuevo permiso de API «Buscar en todo el banco de talentos (solo lectura)». Con él, IGDT puede listar y buscar todos los talentos activos de la empresa (por nombre o titular, puesto, estudios, habilidad, nivel de inglés y años de experiencia), sin datos personales, tarifas ni lista negra. Cada búsqueda queda en la auditoría.
 - Con ese permiso, la ficha, los CV, los documentos y los insumos del CV de la API de integración están disponibles para cualquier talento de la empresa, no solo para quienes postulan a un requerimiento.

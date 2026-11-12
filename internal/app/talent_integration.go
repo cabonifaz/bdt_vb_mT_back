@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/app/ports"
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/domain"
@@ -137,6 +138,8 @@ type CVSourceTemplate struct {
 	Footer         *string         `json:"footer"`
 	Logo           *string         `json:"logo"`
 	Photo          *string         `json:"photo"`
+	// LogoPath: logo fijo del front de BDT (logo_url del seed). Solo se usa para incrustarlo; no sale en la respuesta.
+	LogoPath *string `json:"logoPath,omitempty"`
 }
 
 // CVSource: insumos para generar el CV con la marca del tenant igual que BDT (buildCvData + CvDocument).
@@ -224,6 +227,11 @@ func (s *TalentService) IntegrationCVSource(ctx context.Context, c *domain.ApiCl
 			out.Template.Photo = url
 		}
 	}
+	// como BDT (buildCvTemplate): sin cabecera ni logo subido, el CV lleva el logo fijo del tenant (logoUrl del branding)
+	if out.Template.Header == nil && out.Template.Logo == nil && out.Template.LogoPath != nil {
+		out.Template.Logo = s.staticLogo(ctx, *out.Template.LogoPath)
+	}
+	out.Template.LogoPath = nil
 	return &out, nil
 }
 
@@ -256,6 +264,41 @@ func (s *TalentService) imageDataURL(ctx context.Context, im ports.CVImage) *str
 	}
 	if !strings.HasPrefix(mt, "image/") {
 		return nil
+	}
+	url := "data:" + mt + ";base64," + base64.StdEncoding.EncodeToString(raw)
+	return &url
+}
+
+// staticLogoPath: logos fijos que publica el front de BDT (public/tenants/<slug>/...).
+var staticLogoPath = regexp.MustCompile(`^/tenants/[a-z0-9-]+/[A-Za-z0-9._-]+\.(png|jpe?g|webp)$`)
+
+// staticLogo descarga del front de BDT (PUBLIC_APP_URL) el logo fijo del tenant y lo devuelve como data URL; nil si
+// la ruta no es un logo fijo, no hay URL del front o la descarga falla.
+func (s *TalentService) staticLogo(ctx context.Context, p string) *string {
+	if s.PublicAppURL == "" || !staticLogoPath.MatchString(p) {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(s.PublicAppURL, "/")+p, nil)
+	if err != nil {
+		return nil
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil
+	}
+	raw, err := io.ReadAll(io.LimitReader(res.Body, maxCVImage+1))
+	if err != nil || len(raw) == 0 || len(raw) > maxCVImage {
+		return nil
+	}
+	mt := http.DetectContentType(raw)
+	if !strings.HasPrefix(mt, "image/") {
+		return nil // p. ej. el index.html del SPA cuando el archivo no existe
 	}
 	url := "data:" + mt + ";base64," + base64.StdEncoding.EncodeToString(raw)
 	return &url

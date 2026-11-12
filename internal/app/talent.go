@@ -28,6 +28,8 @@ type TalentService struct {
 	// Notifier avisa del alta o actualización del talento (centro de notificaciones y push)
 	Notifier TalentNotifier
 	Usage    ports.UsageRepository
+	// PublicAppURL: URL del front de BDT (logos fijos del seed para el CV de la API de integración)
+	PublicAppURL string
 }
 
 func tenantOf(p *domain.Principal) (uint64, error) {

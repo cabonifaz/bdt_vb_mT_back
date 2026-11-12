@@ -303,7 +303,9 @@ BEGIN
              'displayName', b.display_name, 'colorPrimary', b.color_primary, 'colorSecondary', b.color_secondary,
              'cvFooterText', b.cv_footer_text,
              'cvShowPhoto', IF(IFNULL(b.cv_show_photo, 0) = 1, CAST('true' AS JSON), CAST('false' AS JSON)),
-             'cvStyle', b.cv_style)
+             'cvStyle', b.cv_style,
+             -- logo fijo del front de BDT (seed, p. ej. /tenants/fractal/logo.png): BDT lo usa en el CV si no hay cabecera ni logo subido
+             'logoPath', b.logo_url)
          ) AS doc
     FROM talent t
     LEFT JOIN master_item c ON c.id = t.country_item_id
