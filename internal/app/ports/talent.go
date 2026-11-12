@@ -18,6 +18,8 @@ type TalentFilter struct {
 // Skill es texto contra la etiqueta de las habilidades técnicas; EnglishLevel, código mínimo de LANGUAGE_LEVEL.
 type IntegrationTalentFilter struct {
 	Search, Position, Education, Skill, EnglishLevel string
+	Skills                                           []string // uuids de TECH_SKILL (debe tener todas)
+	GradeID, Status                                  string   // Status: "" (ACTIVE) o ARCHIVED
 	MinYears                                         *float64
 	Page, PageSize                                   int
 }

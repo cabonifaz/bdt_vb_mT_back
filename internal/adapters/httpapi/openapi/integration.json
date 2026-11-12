@@ -377,6 +377,16 @@
             "type": "string",
             "example": "ACTIVE"
           },
+          "photoId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Id de la foto vigente del talento; se descarga con GET /talents/{id}/files/{photoId}"
+          },
+          "isBlacklisted": {
+            "type": "boolean",
+            "description": "El talento está en la lista negra (sin motivos ni clientes)"
+          },
           "updatedAt": {
             "type": "string",
             "format": "date-time",
@@ -1028,6 +1038,16 @@
             "type": "number",
             "nullable": true
           },
+          "photoId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true,
+            "description": "Id de la foto vigente del talento; se descarga con GET /talents/{id}/files/{photoId}"
+          },
+          "isBlacklisted": {
+            "type": "boolean",
+            "description": "El talento está en la lista negra"
+          },
           "updatedAt": {
             "type": "string",
             "format": "date-time"
@@ -1136,7 +1156,7 @@
     "/masters": {
       "get": {
         "summary": "Catálogos (maestro de maestros) visibles para el tenant",
-        "description": "Requiere el scope masters.read.",
+        "description": "Requiere el scope masters.read. Ítems activos globales y del tenant de la key (p. ej. tables=TECH_SKILL,LANGUAGE_LEVEL,ACADEMIC_GRADE para los filtros de GET /talents).",
         "parameters": [
           {
             "name": "tables",
@@ -1177,7 +1197,7 @@
     "/talents": {
       "get": {
         "summary": "Buscar en el banco de talentos",
-        "description": "Requiere el scope talent.search. Solo talentos ACTIVE no eliminados del tenant de la key, ordenados por última actualización (más reciente primero). Los filtros se combinan (Y); los de texto no distinguen mayúsculas. Cada búsqueda queda auditada (una fila con los filtros).",
+        "description": "Requiere el scope talent.search. Talentos no eliminados del tenant de la key con estado ACTIVE (o ARCHIVED con status=ARCHIVED), ordenados por última actualización (más reciente primero). Los filtros se combinan (Y); los de texto no distinguen mayúsculas. Los catálogos de los filtros (TECH_SKILL, LANGUAGE_LEVEL, ACADEMIC_GRADE) se leen con GET /masters (scope masters.read). Cada búsqueda queda auditada (una fila con los filtros).",
         "parameters": [
           {
             "name": "q",
@@ -1217,6 +1237,38 @@
             "schema": {
               "type": "string",
               "maxLength": 150
+            }
+          },
+          {
+            "name": "skills",
+            "in": "query",
+            "required": false,
+            "description": "Ids (UUID) de ítems del catálogo TECH_SKILL separados por coma, máx. 30; el talento debe tener todas (Y). Un id que no es UUID responde 422",
+            "schema": {
+              "type": "string",
+              "example": "0b7e5a52-6c1d-4c8e-9f0a-1d2e3f4a5b6c,7c9d1e2f-3a4b-4c5d-8e6f-7a8b9c0d1e2f"
+            }
+          },
+          {
+            "name": "gradeId",
+            "in": "query",
+            "required": false,
+            "description": "Id (UUID) de un ítem activo del catálogo ACADEMIC_GRADE (global o del tenant): algún estudio del talento con ese grado. Inválido o inexistente: 422",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "Vacío = talentos ACTIVE; ARCHIVED = archivados. Otro valor: 422",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ARCHIVED"
+              ]
             }
           },
           {
@@ -1282,7 +1334,7 @@
             "$ref": "#/components/responses/Forbidden"
           },
           "422": {
-            "description": "Parámetro inválido (VALIDATION): texto de más de 150, número inválido o fuera de rango, nivel de inglés desconocido",
+            "description": "Parámetro inválido (VALIDATION): texto de más de 150, número inválido o fuera de rango, nivel de inglés desconocido, skills con más de 30 ids o un id que no es UUID, gradeId que no es UUID, status distinto de ARCHIVED; o MASTER_ITEM_INVALID: gradeId que no es un grado ACADEMIC_GRADE activo del tenant",
             "content": {
               "application/json": {
                 "schema": {
@@ -1342,7 +1394,7 @@
     "/talents/{id}/files/{fid}": {
       "get": {
         "summary": "Descarga un archivo del talento (CV, documento o certificado)",
-        "description": "Requiere el scope talent.read. Solo archivos del talento de categoría CV, CV_TENANT_ES, CV_TENANT_EN, DOCUMENT o CERTIFICATE, y si el talento es candidato en el tenant (o cualquier talento del tenant con talent.search); si no, 404 FILE_NOT_FOUND / TALENT_NOT_FOUND. Responde el archivo (inline) con su Content-Type. Cada descarga queda auditada.",
+        "description": "Requiere el scope talent.read. Solo archivos del talento de categoría CV, CV_TENANT_ES, CV_TENANT_EN, DOCUMENT o CERTIFICATE, o su foto vigente (photoId de la ficha o de la búsqueda, categoría PHOTO), y si el talento es candidato en el tenant (o cualquier talento del tenant con talent.search); si no, 404 FILE_NOT_FOUND / TALENT_NOT_FOUND. Responde el archivo (inline) con su Content-Type. Cada descarga queda auditada.",
         "parameters": [
           {
             "name": "id",

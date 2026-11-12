@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/app/ports"
@@ -362,7 +363,8 @@ func (r TalentRepo) IntegrationSearch(ctx context.Context, tenantID, apiKeyID ui
 		minYears = *f.MinYears
 	}
 	rs, err := r.call(ctx, "sp_integration_talent_search", tenantID, apiKeyID, nullStr(f.Search), nullStr(f.Position),
-		nullStr(f.Education), nullStr(f.Skill), nullStr(f.EnglishLevel), minYears, f.Page, f.PageSize, nullStr(ip))
+		nullStr(f.Education), nullStr(f.Skill), nullStr(strings.Join(f.Skills, ",")), nullStr(f.GradeID), nullStr(f.Status),
+		nullStr(f.EnglishLevel), minYears, f.Page, f.PageSize, nullStr(ip))
 	if err != nil {
 		return nil, err
 	}

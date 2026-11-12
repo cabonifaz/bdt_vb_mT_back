@@ -3,6 +3,11 @@
 Formato: `## vMAYOR.MENOR — AAAA-MM-DD`, seguido de los cambios en viñetas (español). Al publicar una versión se
 sube `VERSION` y se agrega su sección aquí: la API la registra al desplegarse en cada ambiente y la notifica.
 
+## v1.11 — 2026-11-12
+- IGDT puede mostrar la pantalla de talentos igual que BDT: la búsqueda de integración filtra también por habilidades del catálogo (el talento debe tener todas las elegidas), por grado académico y por talentos archivados, e indica para cada talento su foto y si está en la lista negra (sin motivos ni clientes). Los nuevos filtros quedan en la auditoría de cada búsqueda.
+- La ficha de integración incluye la foto del talento y si está en la lista negra, y la foto se puede descargar como los demás archivos (cada descarga queda en la auditoría).
+- La llave automática de IGDT incluye el permiso de lectura de catálogos (habilidades, niveles de idioma y grados académicos), también las ya entregadas.
+
 ## v1.10 — 2026-11-11
 - Insumos del CV para IGDT: cuando la empresa no tiene cabecera de CV ni logo subido, se entrega el logo fijo de la empresa (el mismo que usa BDT en sus CV), para que el CV generado en IGDT tenga el mismo formato que en BDT.
 

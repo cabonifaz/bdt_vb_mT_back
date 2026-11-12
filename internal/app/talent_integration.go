@@ -8,6 +8,7 @@ import (
 	"math"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -25,18 +26,21 @@ const (
 	integrationPageSize    = 20
 	integrationMaxPageSize = 50
 	integrationMaxMinYears = 100
+	integrationMaxSkills   = 30
 )
 
 var englishLevelCode = regexp.MustCompile(`^[A-Z_]{1,30}$`)
 
 // ParseIntegrationTalentQuery valida los parámetros de GET /integration/v1/talents (get devuelve el valor del query
-// param): textos de hasta 150 caracteres, english como código de nivel, minYears número entre 0 y 100, page ≥ 1 y
-// pageSize entre 1 y 50 (por defecto 20). Cualquier valor inválido es VALIDATION.
+// param): textos de hasta 150 caracteres, english como código de nivel, skills hasta 30 UUID separados por coma (sin
+// repetidos), gradeId UUID, status vacío o ARCHIVED, minYears número entre 0 y 100, page ≥ 1 y pageSize entre 1 y 50
+// (por defecto 20). Cualquier valor inválido es VALIDATION.
 func ParseIntegrationTalentQuery(get func(string) string) (ports.IntegrationTalentFilter, error) {
 	f := ports.IntegrationTalentFilter{
 		Search: strings.TrimSpace(get("q")), Position: strings.TrimSpace(get("position")),
 		Education: strings.TrimSpace(get("education")), Skill: strings.TrimSpace(get("skill")),
 		EnglishLevel: strings.ToUpper(strings.TrimSpace(get("english"))), Page: 1, PageSize: integrationPageSize,
+		GradeID: strings.ToLower(strings.TrimSpace(get("gradeId"))), Status: strings.ToUpper(strings.TrimSpace(get("status"))),
 	}
 	for _, v := range []string{f.Search, f.Position, f.Education, f.Skill} {
 		if len(v) > 150 {
@@ -44,6 +48,27 @@ func ParseIntegrationTalentQuery(get func(string) string) (ports.IntegrationTale
 		}
 	}
 	if f.EnglishLevel != "" && !englishLevelCode.MatchString(f.EnglishLevel) {
+		return f, domain.ErrValidation
+	}
+	if v := strings.TrimSpace(get("skills")); v != "" {
+		parts := strings.Split(v, ",")
+		if len(parts) > integrationMaxSkills {
+			return f, domain.ErrValidation
+		}
+		for _, p := range parts {
+			p = strings.ToLower(strings.TrimSpace(p))
+			if len(p) != 36 || !validUUID(p) {
+				return f, domain.ErrValidation
+			}
+			if !slices.Contains(f.Skills, p) {
+				f.Skills = append(f.Skills, p)
+			}
+		}
+	}
+	if f.GradeID != "" && (len(f.GradeID) != 36 || !validUUID(f.GradeID)) {
+		return f, domain.ErrValidation
+	}
+	if f.Status != "" && f.Status != "ARCHIVED" {
 		return f, domain.ErrValidation
 	}
 	if v := strings.TrimSpace(get("minYears")); v != "" {
@@ -70,8 +95,8 @@ func ParseIntegrationTalentQuery(get func(string) string) (ports.IntegrationTale
 	return f, nil
 }
 
-// IntegrationSearch: búsqueda en el banco de talentos del tenant de la key (solo ACTIVE), sin datos personales cifrados,
-// tarifas ni lista negra. Auditada con la key (una fila por búsqueda).
+// IntegrationSearch: búsqueda en el banco de talentos del tenant de la key (ACTIVE o, con status=ARCHIVED, archivados),
+// sin datos personales cifrados ni tarifas; de la lista negra solo isBlacklisted. Auditada con la key (una fila por búsqueda).
 func (s *TalentService) IntegrationSearch(ctx context.Context, c *domain.ApiClient, ip string, f ports.IntegrationTalentFilter) (*ports.IntegrationTalentPage, error) {
 	if c == nil {
 		return nil, domain.NewError("APIKEY_INVALID")
@@ -94,7 +119,8 @@ func (s *TalentService) IntegrationDossier(ctx context.Context, c *domain.ApiCli
 	return decryptKeysOpt(s.Cipher, doc, true, "docNumberEnc", "emailEnc", "phoneEnc", "birthDateEnc", "authorNameEnc"), nil
 }
 
-// IntegrationFile: archivo del candidato (CV original o formato empresa ES/EN, documento o certificado), descifrado.
+// IntegrationFile: archivo del candidato (CV original o formato empresa ES/EN, documento, certificado o su foto
+// vigente), descifrado.
 func (s *TalentService) IntegrationFile(ctx context.Context, c *domain.ApiClient, ip, talentID, fileID string) (*domain.FileObject, []byte, error) {
 	if c == nil {
 		return nil, nil, domain.NewError("APIKEY_INVALID")

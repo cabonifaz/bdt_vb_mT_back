@@ -75,7 +75,7 @@ func (s *Server) integrationTalent(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(doc)
 }
 
-// GET /integration/v1/talents/{id}/files/{fid}: CV, documento o certificado del candidato (scope talent.read).
+// GET /integration/v1/talents/{id}/files/{fid}: CV, documento, certificado o foto vigente del candidato (scope talent.read).
 func (s *Server) integrationTalentFile(w http.ResponseWriter, r *http.Request) {
 	f, data, err := s.Talents.IntegrationFile(r.Context(), apiClient(r), s.clientIP(r), chi.URLParam(r, "id"), chi.URLParam(r, "fid"))
 	if err != nil {
@@ -138,8 +138,8 @@ func (s *Server) integrationTalentCVSource(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, out)
 }
 
-// GET /integration/v1/talents?q=&position=&education=&skill=&english=&minYears=&page=&pageSize=: búsqueda en todo el
-// banco de talentos del tenant de la key (scope talent.search, solo lectura).
+// GET /integration/v1/talents?q=&position=&education=&skill=&skills=&gradeId=&status=&english=&minYears=&page=&pageSize=:
+// búsqueda en todo el banco de talentos del tenant de la key (scope talent.search, solo lectura).
 func (s *Server) integrationTalentSearch(w http.ResponseWriter, r *http.Request) {
 	f, err := app.ParseIntegrationTalentQuery(r.URL.Query().Get)
 	if err != nil {

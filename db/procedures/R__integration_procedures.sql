@@ -35,15 +35,22 @@ BEGIN
 END $$
 
 -- Búsqueda en el banco de talentos del tenant (alcance talent.search): como sp_talent_search, sin favoritos, colecciones
--- ni actor; solo talentos ACTIVE no eliminados. p_skill: texto contra la etiqueta (es/en) de las habilidades técnicas;
--- p_english_level: código mínimo de LANGUAGE_LEVEL (desconocido = VALIDATION). Result set 1: total; result set 2: un
--- documento JSON por talento (sin datos personales cifrados, tarifas ni lista negra). Audita una lectura con la key.
+-- ni actor; talentos no eliminados con status ACTIVE (p_status vacío) o ARCHIVED (otro valor = VALIDATION).
+-- p_skill: texto contra la etiqueta (es/en) de las habilidades técnicas; p_skills: uuids de TECH_SKILL separados por coma
+-- (debe tener TODAS, como sp_talent_search); p_grade_uuid: grado ACADEMIC_GRADE (sp_master_resolve: inválido =
+-- MASTER_ITEM_INVALID); p_english_level: código mínimo de LANGUAGE_LEVEL (desconocido = VALIDATION). Result set 1: total;
+-- result set 2: un documento JSON por talento (sin datos personales cifrados ni tarifas; de la lista negra solo
+-- isBlacklisted, como sp_talent_search; photoId = uuid de la foto vigente). Audita una lectura con la key.
 DROP PROCEDURE IF EXISTS sp_integration_talent_search $$
 CREATE PROCEDURE sp_integration_talent_search(IN p_tenant_id BIGINT UNSIGNED, IN p_api_key_id BIGINT UNSIGNED,
   IN p_search VARCHAR(150), IN p_position VARCHAR(150), IN p_education VARCHAR(150), IN p_skill VARCHAR(150),
+  IN p_skills VARCHAR(1200), IN p_grade_uuid CHAR(36), IN p_status VARCHAR(20),
   IN p_english_level VARCHAR(30), IN p_min_years DECIMAL(5,1), IN p_page INT, IN p_page_size INT, IN p_ip VARCHAR(45))
 BEGIN
   DECLARE v_offset INT;
+  DECLARE v_skill_count INT DEFAULT 0;
+  DECLARE v_grade BIGINT UNSIGNED;
+  DECLARE v_status VARCHAR(20);
   DECLARE v_en_lang BIGINT UNSIGNED;
   DECLARE v_en_min INT;
   DECLARE v_search VARCHAR(160);
@@ -66,10 +73,19 @@ BEGIN
                      LIMIT 1);
     IF v_en_min IS NULL THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:VALIDATION'; END IF;
   END IF;
+  SET v_status = IFNULL(NULLIF(p_status, ''), 'ACTIVE');
+  IF v_status NOT IN ('ACTIVE', 'ARCHIVED') THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:VALIDATION'; END IF;
+  IF p_skills IS NOT NULL AND p_skills <> '' THEN
+    SET v_skill_count = LENGTH(p_skills) - LENGTH(REPLACE(p_skills, ',', '')) + 1;
+  END IF;
+  IF p_grade_uuid IS NOT NULL AND p_grade_uuid <> '' THEN
+    CALL sp_master_resolve(p_tenant_id, 'ACADEMIC_GRADE', p_grade_uuid, v_grade);
+  END IF;
 
   CALL sp_audit_insert(p_tenant_id, NULL, p_api_key_id, 'READ', 'talent_search', NULL,
                        JSON_OBJECT('via', 'integration', 'q', p_search, 'position', p_position, 'education', p_education,
-                                   'skill', p_skill, 'english', p_english_level, 'minYears', p_min_years,
+                                   'skill', p_skill, 'skills', NULLIF(p_skills, ''), 'gradeId', NULLIF(p_grade_uuid, ''),
+                                   'status', v_status, 'english', p_english_level, 'minYears', p_min_years,
                                    'page', p_page, 'pageSize', p_page_size), p_ip);
 
   DROP TEMPORARY TABLE IF EXISTS tmp_integration_talent_hit;
@@ -81,8 +97,13 @@ BEGIN
                    FROM talent_experience e WHERE e.talent_id = t.id AND e.deleted_at IS NULL), 0),
          IFNULL(t.updated_at, t.created_at)
     FROM talent t
-   WHERE t.tenant_id = p_tenant_id AND t.deleted_at IS NULL AND t.status = 'ACTIVE'
+   WHERE t.tenant_id = p_tenant_id AND t.deleted_at IS NULL AND t.status = v_status
      AND (v_search IS NULL OR t.search_name LIKE v_search OR LOWER(t.headline) LIKE v_search)
+     AND (v_skill_count = 0 OR (SELECT COUNT(DISTINCT s.skill_item_id) FROM talent_tech_skill s
+                                  JOIN master_item mi ON mi.id = s.skill_item_id
+                                 WHERE s.talent_id = t.id AND s.deleted_at IS NULL AND FIND_IN_SET(mi.uuid, p_skills) > 0) = v_skill_count)
+     AND (v_grade IS NULL OR EXISTS (SELECT 1 FROM talent_education d WHERE d.talent_id = t.id AND d.deleted_at IS NULL
+                                       AND d.grade_item_id = v_grade))
      AND (v_skill IS NULL OR EXISTS (SELECT 1 FROM talent_tech_skill s JOIN master_item mi ON mi.id = s.skill_item_id
                                      WHERE s.talent_id = t.id AND s.deleted_at IS NULL
                                        AND (LOWER(JSON_UNQUOTE(JSON_EXTRACT(mi.label_i18n, '$.es'))) LIKE v_skill
@@ -111,7 +132,9 @@ BEGIN
                                FROM (SELECT mi.label_i18n, s.years
                                        FROM talent_tech_skill s JOIN master_item mi ON mi.id = s.skill_item_id
                                       WHERE s.talent_id = t.id AND s.deleted_at IS NULL ORDER BY s.years DESC, s.id) x), JSON_ARRAY()),
-           'avgRating', t.avg_rating,
+           'avgRating', t.avg_rating, 'photoId', pf.uuid,
+           'isBlacklisted', IF(EXISTS (SELECT 1 FROM talent_blacklist b WHERE b.talent_id = t.id AND b.deleted_at IS NULL),
+                               CAST('true' AS JSON), CAST('false' AS JSON)),
            'updatedAt', DATE_FORMAT(IFNULL(t.updated_at, t.created_at), '%Y-%m-%dT%H:%i:%s.%fZ'),
            'isCandidate', IF(EXISTS (SELECT 1 FROM requirement_candidate rc
                                        JOIN requirement r ON r.id = rc.requirement_id AND r.tenant_id = p_tenant_id AND r.deleted_at IS NULL
@@ -121,6 +144,7 @@ BEGIN
     FROM tmp_integration_talent_hit h
     JOIN talent t ON t.id = h.id
     LEFT JOIN master_item c ON c.id = t.country_item_id
+    LEFT JOIN file_object pf ON pf.id = t.photo_file_id AND pf.deleted_at IS NULL
    ORDER BY h.sort_ts DESC, t.id DESC
    LIMIT v_offset, p_page_size;
 
@@ -128,7 +152,7 @@ BEGIN
 END $$
 
 -- Ficha del candidato (un documento JSON). Mismos datos que la ficha del talento (sp_talent_get) sin tarifas, solo los
--- archivos de CV, documentos y certificados, y las postulaciones del tenant (como sp_rq_by_talent, más la fecha de ingreso registrada en IGDT).
+-- archivos de CV, documentos y certificados (más photoId, la foto vigente, e isBlacklisted sin motivos ni clientes), y las postulaciones del tenant (como sp_rq_by_talent, más la fecha de ingreso registrada en IGDT).
 DROP PROCEDURE IF EXISTS sp_integration_talent_dossier $$
 CREATE PROCEDURE sp_integration_talent_dossier(IN p_tenant_id BIGINT UNSIGNED, IN p_api_key_id BIGINT UNSIGNED,
   IN p_talent_uuid CHAR(36), IN p_ip VARCHAR(45))
@@ -147,7 +171,9 @@ BEGIN
            'linkedinUrl', t.linkedin_url, 'githubUrl', t.github_url, 'summary', t.summary,
            'availability', av.label_i18n,
            'hasEquipment', IF(t.has_equipment IS NULL, NULL, IF(t.has_equipment = 1, CAST('true' AS JSON), CAST('false' AS JSON))),
-           'avgRating', t.avg_rating, 'status', t.status,
+           'avgRating', t.avg_rating, 'status', t.status, 'photoId', pf.uuid,
+           'isBlacklisted', IF(EXISTS (SELECT 1 FROM talent_blacklist b WHERE b.talent_id = t.id AND b.deleted_at IS NULL),
+                               CAST('true' AS JSON), CAST('false' AS JSON)),
            'updatedAt', DATE_FORMAT(IFNULL(t.updated_at, t.created_at), '%Y-%m-%dT%H:%i:%s.%fZ'),
            'experiences', IFNULL((SELECT JSON_ARRAYAGG(JSON_OBJECT('id', x.uuid, 'company', x.company, 'position', x.position,
                               'startDate', x.start_date, 'endDate', x.end_date,
@@ -224,27 +250,31 @@ BEGIN
     LEFT JOIN master_item oc ON oc.id = t.origin_country_item_id
     LEFT JOIN master_item av ON av.id = t.availability_item_id
     LEFT JOIN file_object cf ON cf.id = t.cv_file_id AND cf.deleted_at IS NULL
+    LEFT JOIN file_object pf ON pf.id = t.photo_file_id AND pf.deleted_at IS NULL
    WHERE t.id = v_id;
 END $$
 
--- Archivo de un candidato (CV original, CV formato empresa ES/EN, documento o certificado): mismas columnas que
--- sp_talent_file_get.
+-- Archivo de un candidato (CV original, CV formato empresa ES/EN, documento o certificado, o su foto vigente
+-- talent.photo_file_id de categoría PHOTO): mismas columnas que sp_talent_file_get.
 DROP PROCEDURE IF EXISTS sp_integration_talent_file $$
 CREATE PROCEDURE sp_integration_talent_file(IN p_tenant_id BIGINT UNSIGNED, IN p_api_key_id BIGINT UNSIGNED,
   IN p_talent_uuid CHAR(36), IN p_file_uuid CHAR(36), IN p_ip VARCHAR(45))
 BEGIN
   DECLARE v_id BIGINT UNSIGNED;
+  DECLARE v_file BIGINT UNSIGNED;
   CALL sp_integration_talent_resolve(p_tenant_id, p_api_key_id, p_talent_uuid, v_id);
-  IF NOT EXISTS (SELECT 1 FROM file_object WHERE uuid = p_file_uuid AND tenant_id = p_tenant_id AND owner_type = 'TALENT'
-                   AND owner_id = v_id AND deleted_at IS NULL
-                   AND category IN ('CV', 'CV_TENANT_ES', 'CV_TENANT_EN', 'DOCUMENT', 'CERTIFICATE')) THEN
-    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:FILE_NOT_FOUND';
-  END IF;
+  SET v_file = (SELECT f.id FROM file_object f
+                 WHERE f.uuid = p_file_uuid AND f.tenant_id = p_tenant_id AND f.owner_type = 'TALENT'
+                   AND f.owner_id = v_id AND f.deleted_at IS NULL
+                   AND (f.category IN ('CV', 'CV_TENANT_ES', 'CV_TENANT_EN', 'DOCUMENT', 'CERTIFICATE')
+                        OR (f.category = 'PHOTO' AND f.id = (SELECT t.photo_file_id FROM talent t WHERE t.id = v_id)))
+                 LIMIT 1);
+  IF v_file IS NULL THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:FILE_NOT_FOUND'; END IF;
   CALL sp_audit_insert(p_tenant_id, NULL, p_api_key_id, 'DOWNLOAD', 'talent_file', p_file_uuid,
                        JSON_OBJECT('via', 'integration', 'talent', p_talent_uuid), p_ip);
   SELECT f.id, f.uuid, f.tenant_id, f.owner_type, f.category, f.storage_key, f.original_name, f.mime_type, f.size_bytes, f.sha256, f.is_encrypted
     FROM file_object f
-   WHERE f.uuid = p_file_uuid AND f.tenant_id = p_tenant_id AND f.owner_type = 'TALENT' AND f.owner_id = v_id AND f.deleted_at IS NULL;
+   WHERE f.id = v_file;
 END $$
 
 -- Insumos para generar el CV con la marca del tenant (como lo hace el front de BDT con buildCvData/buildCvTemplate).
