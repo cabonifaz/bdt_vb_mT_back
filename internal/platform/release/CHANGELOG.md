@@ -3,6 +3,9 @@
 Formato: `## vMAYOR.MENOR — AAAA-MM-DD`, seguido de los cambios en viñetas (español). Al publicar una versión se
 sube `VERSION` y se agrega su sección aquí: la API la registra al desplegarse en cada ambiente y la notifica.
 
+## v1.12 — 2026-11-23
+- API de integración (IGDT): la ficha y los insumos del CV respetan siempre el mismo orden que BDT (habilidades técnicas de más a menos años, experiencia y estudios del más reciente al más antiguo, idiomas y archivos), para que el CV generado en IGDT sea idéntico al de BDT.
+
 ## v1.11 — 2026-11-12
 - IGDT puede mostrar la pantalla de talentos igual que BDT: la búsqueda de integración filtra también por habilidades del catálogo (el talento debe tener todas las elegidas), por grado académico y por talentos archivados, e indica para cada talento su foto y si está en la lista negra (sin motivos ni clientes). Los nuevos filtros quedan en la auditoría de cada búsqueda.
 - La ficha de integración incluye la foto del talento y si está en la lista negra, y la foto se puede descargar como los demás archivos (cada descarga queda en la auditoría).
