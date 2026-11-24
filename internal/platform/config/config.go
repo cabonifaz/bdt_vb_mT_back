@@ -15,8 +15,11 @@ type Config struct {
 	Env          string // local | staging | preprod | production
 	HTTPPort     string
 	PublicAppURL string
-	CORSOrigins  []string
-	TrustProxy   bool
+	// Resend (correo saliente): RESEND_API_KEY y remitente MAIL_FROM de un dominio verificado en Resend. Sin llave, las
+	// invitaciones solo se registran en el log. Sin MAIL_FROM se usa el remitente de pruebas de Resend.
+	ResendAPIKey, MailFrom, MailFromName string
+	CORSOrigins                          []string
+	TrustProxy                           bool
 
 	DBHost, DBPort, DBName, DBUser, DBPassword, DBTLS string
 
@@ -59,9 +62,10 @@ func Load() (Config, error) {
 		Env:          get("APP_ENV", "local"),
 		HTTPPort:     get("PORT", get("HTTP_PORT", "8080")), // Railway inyecta PORT
 		PublicAppURL: get("PUBLIC_APP_URL", "http://localhost:5173"),
-		CORSOrigins:  split(get("CORS_ORIGINS", "http://localhost:5173")),
-		TrustProxy:   get("TRUST_PROXY", "false") == "true",
-		DBHost:       os.Getenv("DB_HOST"), DBPort: get("DB_PORT", "3306"), DBName: os.Getenv("DB_NAME"),
+		ResendAPIKey: os.Getenv("RESEND_API_KEY"), MailFrom: get("MAIL_FROM", "onboarding@resend.dev"), MailFromName: get("MAIL_FROM_NAME", "Banco de Talentos"),
+		CORSOrigins: split(get("CORS_ORIGINS", "http://localhost:5173")),
+		TrustProxy:  get("TRUST_PROXY", "false") == "true",
+		DBHost:      os.Getenv("DB_HOST"), DBPort: get("DB_PORT", "3306"), DBName: os.Getenv("DB_NAME"),
 		DBUser: os.Getenv("DB_USER"), DBPassword: os.Getenv("DB_PASSWORD"), DBTLS: os.Getenv("DB_TLS"),
 		JWTSecret:         os.Getenv("JWT_SECRET"),
 		AccessTTL:         minutes("ACCESS_TOKEN_MINUTES", 15),

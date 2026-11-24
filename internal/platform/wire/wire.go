@@ -18,6 +18,7 @@ import (
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/adapters/security"
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/adapters/storage"
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/app"
+	"github.com/cabonifaz/bdt_vb_mT_back/internal/app/ports"
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/platform/config"
 	"github.com/cabonifaz/bdt_vb_mT_back/internal/platform/release"
 )
@@ -57,8 +58,13 @@ func Build(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, erro
 
 	auth := &app.AuthService{Repo: mysql.AuthRepo{Store: store}, Cipher: cipher, Hasher: hasher, Tokens: issuer,
 		Cfg: app.AuthConfig{RefreshTTL: cfg.RefreshTTL, RememberTTL: cfg.RememberTTL, ReuseGrace: cfg.ReuseGrace, MaxAttempts: 5, LockMinutes: 15}}
+	// invitaciones: por Resend si hay RESEND_API_KEY; si no, solo quedan en el log
+	var invMailer ports.Mailer = mailer.LogMailer{Log: log}
+	if rs := (mailer.Resend{Key: cfg.ResendAPIKey, From: cfg.MailFrom, FromName: cfg.MailFromName}); rs.Enabled() {
+		invMailer = rs
+	}
 	users := &app.UserService{Users: mysql.UserRepo{Store: store}, Invitations: mysql.InvitationRepo{Store: store},
-		Cipher: cipher, Hasher: hasher, Mailer: mailer.LogMailer{Log: log}, AppURL: cfg.PublicAppURL,
+		Cipher: cipher, Hasher: hasher, Mailer: invMailer, AppURL: cfg.PublicAppURL,
 		InviteTTL: cfg.InviteTTL, ExposeLink: cfg.Env == "local" || cfg.Env == "staging"}
 	fileRepo := mysql.FileRepo{Store: store}
 

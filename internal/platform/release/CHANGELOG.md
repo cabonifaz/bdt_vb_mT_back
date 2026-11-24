@@ -3,6 +3,9 @@
 Formato: `## vMAYOR.MENOR — AAAA-MM-DD`, seguido de los cambios en viñetas (español). Al publicar una versión se
 sube `VERSION` y se agrega su sección aquí: la API la registra al desplegarse en cada ambiente y la notifica.
 
+## v1.13 — 2026-11-24
+- Las invitaciones se envían por correo con Resend desde no-reply@geeky-tech.es. Si el correo no sale, la invitación igual queda creada y se informa el motivo.
+
 ## v1.12 — 2026-11-23
 - API de integración (IGDT): la ficha y los insumos del CV respetan siempre el mismo orden que BDT (habilidades técnicas de más a menos años, experiencia y estudios del más reciente al más antiguo, idiomas y archivos), para que el CV generado en IGDT sea idéntico al de BDT.
 

@@ -128,6 +128,10 @@ type UserService struct {
 type InviteResult struct {
 	Invitation *domain.Invitation `json:"invitation"`
 	Link       string             `json:"link,omitempty"`
+	// EmailSent: el correo de invitación salió. Si falla (p. ej. remitente sin dominio verificado), la invitación queda
+	// creada y EmailError explica el motivo.
+	EmailSent  bool   `json:"emailSent"`
+	EmailError string `json:"emailError,omitempty"`
 }
 
 func (s *UserService) Invite(ctx context.Context, p *domain.Principal, ip string, tenantID *uint64, email, role, tenantName, locale string) (*InviteResult, error) {
@@ -147,10 +151,10 @@ func (s *UserService) Invite(ctx context.Context, p *domain.Principal, ip string
 	}
 	inv.Email = email
 	link := strings.TrimRight(s.AppURL, "/") + "/invitacion/" + token
+	res := &InviteResult{Invitation: inv, EmailSent: true}
 	if err := s.Mailer.SendInvitation(ctx, email, tenantName, link, locale); err != nil {
-		return nil, err
+		res.EmailSent, res.EmailError = false, err.Error()
 	}
-	res := &InviteResult{Invitation: inv}
 	if s.ExposeLink {
 		res.Link = link
 	}
