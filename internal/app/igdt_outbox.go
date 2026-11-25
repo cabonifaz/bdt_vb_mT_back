@@ -278,9 +278,18 @@ func (s *IGDTService) hireDocs(ctx context.Context, tid uint64, ids []string) (m
 		return nil, err
 	}
 	for i, raw := range list {
-		list[i] = decryptKeys(s.Cipher, decryptNames(s.Cipher, raw), "docNumberEnc", "emailEnc", "phoneEnc")
+		list[i] = decryptHireDoc(s.Cipher, raw)
 	}
 	return docsByID(list), nil
+}
+
+// hireRequesterKeys: solicitantes de la ficha de ingreso (quien confirmó y el analista del RQ). Si faltan quedan en null.
+var hireRequesterKeys = []string{"confirmedByNameEnc", "confirmedByEmailEnc", "rqAnalystNameEnc", "rqAnalystEmailEnc"}
+
+// decryptHireDoc descifra el snapshot de un candidato: datos del talento ("" si faltan) y solicitantes (null si faltan).
+func decryptHireDoc(c ports.Cipher, raw json.RawMessage) json.RawMessage {
+	doc := decryptKeysOpt(c, raw, true, hireRequesterKeys...)
+	return decryptKeys(c, decryptNames(c, doc), "docNumberEnc", "emailEnc", "phoneEnc")
 }
 
 // decryptKeys reemplaza las claves indicadas ("<x>Enc", base64) por "<x>" descifrado, a cualquier profundidad.

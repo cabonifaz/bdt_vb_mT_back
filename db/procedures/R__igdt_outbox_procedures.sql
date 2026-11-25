@@ -202,6 +202,8 @@ BEGIN
 END $$
 
 -- Candidatos (lote: arreglo JSON de uuid): active = confirmado, vigente y sin renuncia en un RQ no eliminado. Datos personales cifrados (base64).
+-- Solicitantes (a quienes IGDT envía la ficha de ingreso): confirmedBy* (usuario que confirmó) y rqAnalyst* (analista
+-- responsable del RQ, o null).
 DROP PROCEDURE IF EXISTS sp_igdt_hire_snapshot $$
 DROP PROCEDURE IF EXISTS sp_igdt_hire_snapshots $$
 CREATE PROCEDURE sp_igdt_hire_snapshots(IN p_tenant_id BIGINT UNSIGNED, IN p_uuids JSON)
@@ -229,8 +231,10 @@ BEGIN
                'contract', IF(r.contract_value IS NULL, NULL, CONCAT(TRIM(TRAILING '.' FROM TRIM(TRAILING '0' FROM r.contract_value)), ' ',
                    (SELECT LOWER(JSON_UNQUOTE(JSON_EXTRACT(label_i18n, '$.es'))) FROM master_item WHERE id = r.contract_unit_item_id))),
                'emo', r.needs_emo = 1, 'sctr', r.needs_sctr = 1, 'laptop', r.needs_laptop = 1),
-           'confirmedByNameEnc', (SELECT TO_BASE64(u.full_name_enc) FROM app_user u WHERE u.id = IFNULL(rc.updated_by, rc.created_by)),
-           'confirmedAt', DATE_FORMAT(IFNULL(rc.stage_at, IFNULL(rc.updated_at, rc.created_at)), '%Y-%m-%dT%H:%i:%s.%fZ')) AS doc
+           -- solicitantes de la ficha de ingreso: quien confirmó y el analista responsable del RQ (null si el RQ no tiene)
+           'confirmedByNameEnc', TO_BASE64(cu.full_name_enc), 'confirmedByEmailEnc', TO_BASE64(cu.email_enc),
+           'confirmedAt', DATE_FORMAT(IFNULL(rc.stage_at, IFNULL(rc.updated_at, rc.created_at)), '%Y-%m-%dT%H:%i:%s.%fZ'),
+           'rqAnalystNameEnc', TO_BASE64(au.full_name_enc), 'rqAnalystEmailEnc', TO_BASE64(au.email_enc)) AS doc
     FROM JSON_TABLE(p_uuids, '$[*]' COLUMNS (u CHAR(36) PATH '$')) j
     JOIN requirement_candidate rc ON rc.uuid = j.u
     JOIN requirement r ON r.id = rc.requirement_id AND r.tenant_id = p_tenant_id
@@ -240,7 +244,13 @@ BEGIN
     JOIN master_item pi ON pi.id = v.profile_item_id
     JOIN talent tl ON tl.id = rc.talent_id
     LEFT JOIN master_item dt ON dt.id = tl.doc_type_item_id
-    LEFT JOIN tenant_integration ti ON ti.tenant_id = p_tenant_id AND ti.provider = 'IGDT';
+    LEFT JOIN tenant_integration ti ON ti.tenant_id = p_tenant_id AND ti.provider = 'IGDT'
+    LEFT JOIN app_user cu ON cu.id = IFNULL(rc.updated_by, rc.created_by)
+    -- analista del RQ: el responsable vigente (requirement_owner sin desasignar) asignado primero, prefiriendo usuarios
+    -- activos; con varios responsables, el más antiguo es el titular del RQ
+    LEFT JOIN app_user au ON au.id = (SELECT o.user_id FROM requirement_owner o JOIN app_user ou ON ou.id = o.user_id
+                                       WHERE o.requirement_id = r.id AND o.unassigned_at IS NULL AND ou.deleted_at IS NULL
+                                       ORDER BY ou.status = 'ACTIVE' DESC, o.assigned_at, o.id LIMIT 1);
 END $$
 
 DELIMITER ;

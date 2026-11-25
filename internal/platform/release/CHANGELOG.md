@@ -3,6 +3,10 @@
 Formato: `## vMAYOR.MENOR — AAAA-MM-DD`, seguido de los cambios en viñetas (español). Al publicar una versión se
 sube `VERSION` y se agrega su sección aquí: la API la registra al desplegarse en cada ambiente y la notifica.
 
+## v1.14 — 2026-11-25
+- Las solicitudes de ingreso que BDT envía a IGDT incluyen ahora a los solicitantes de la ficha: el nombre y correo del usuario que confirmó el ingreso y el nombre y correo del analista responsable del requerimiento (el responsable vigente asignado primero), para que IGDT les envíe las fichas de ingreso.
+- Las solicitudes de ingreso vigentes ya enviadas se vuelven a enviar automáticamente con estos datos.
+
 ## v1.13 — 2026-11-24
 - Las invitaciones se envían por correo con Resend desde no-reply@geeky-tech.es. Si el correo no sale, la invitación igual queda creada y se informa el motivo.
 
