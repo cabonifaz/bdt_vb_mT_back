@@ -20,7 +20,9 @@ func (r *hiresRepo) ApplyHires(_ context.Context, _ uint64, events json.RawMessa
 	r.events, r.cursor = events, cursor
 	return &ports.IGDTHiresApplied{Moved: r.moved}, nil
 }
-func (r *hiresRepo) OutboxNext(context.Context, uint64, int) ([]ports.IGDTOutboxItem, error) { return nil, nil }
+func (r *hiresRepo) OutboxNext(context.Context, uint64, int) ([]ports.IGDTOutboxItem, error) {
+	return nil, nil
+}
 
 type hiresReader struct{ page *ports.IGDTHireEvents }
 
