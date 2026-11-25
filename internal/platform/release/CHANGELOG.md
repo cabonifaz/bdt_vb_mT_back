@@ -3,6 +3,9 @@
 Formato: `## vMAYOR.MENOR — AAAA-MM-DD`, seguido de los cambios en viñetas (español). Al publicar una versión se
 sube `VERSION` y se agrega su sección aquí: la API la registra al desplegarse en cada ambiente y la notifica.
 
+## v1.18 — 2026-11-25
+- Los movimientos registrados en IGDT (traspaso de área, cambio de cargo, jornada, sede, fecha de fin o remuneración) quedan en el historial del candidato.
+
 ## v1.17 — 2026-11-25
 - Cambio de RQ desde IGDT: cuando IGDT pide llevar a un talento a otro requerimiento (uno o varios), BDT lo agrega como candidato en «Observado» en cada requerimiento destino abierto (si no estaba ya), indica en su tarjeta y en su ficha «Traído desde IGDT (cambio de RQ desde RQ-…)» y avisa a los responsables del requerimiento y a los jefes de selección. Un talento puede estar en varios requerimientos a la vez.
 - Fin de contrato desde IGDT: el cese marca la baja como efectiva con su fecha, el candidato se ve como «Cesó» y el talento vuelve a estar disponible (si estaba «No disponible»). Las renovaciones y los cambios de área se registran en la línea de tiempo del candidato, sin cambiar el pipeline.

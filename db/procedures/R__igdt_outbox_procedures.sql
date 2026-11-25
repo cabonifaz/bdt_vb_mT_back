@@ -266,7 +266,7 @@ DELIMITER $$
 --   START_CHANGED: al candidato ya ingresado le cambia la fecha de inicio (evento HIRE_START_CHANGED).
 --   REVOKED: el cliente revocó el ingreso antes de empezar: el candidato deja de estar ingresado (evento HIRE_REVOKED). El RQ
 --     cerrado NO se reabre solo (eso lo decide selección); la API avisa a los responsables y a quienes pueden reabrir.
---   RENEWED / TRANSFERRED: renovación del contrato y cambio de área; solo quedan en el historial del candidato
+--   RENEWED / TRANSFERRED / MOVED: renovación, cambio de área y movimientos (IGDT 0.14); solo quedan en el historial del candidato
 --     (HIRE_RENEWED / HIRE_TRANSFERRED con los datos del evento). No cambian el pipeline.
 --   TERMINATED: fin del contrato (cese): baja efectiva (offboard_status EFFECTIVE, offboard_at = fecha de cese) y evento
 --     HIRE_TERMINATED. El candidato sigue como ingresado (historial; el RQ no pierde cobertura ni se reabre) y el talento
@@ -315,7 +315,7 @@ BEGIN
              term_date DATE PATH '$.terminationDate' NULL ON EMPTY NULL ON ERROR,
              ev_date DATE PATH '$.date' NULL ON EMPTY NULL ON ERROR,
              hire CHAR(36) PATH '$.hireId' NULL ON EMPTY NULL ON ERROR)) j
-     WHERE j.type IN ('HIRED', 'START_CHANGED', 'REVOKED', 'RENEWED', 'TRANSFERRED', 'TERMINATED', 'RQ_CHANGE_REQUESTED')
+     WHERE j.type IN ('HIRED', 'START_CHANGED', 'REVOKED', 'RENEWED', 'TRANSFERRED', 'MOVED', 'TERMINATED', 'RQ_CHANGE_REQUESTED')
      ORDER BY j.ord;
   DECLARE CONTINUE HANDLER FOR NOT FOUND SET v_done = 1;
   DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN ROLLBACK; RESIGNAL; END;
@@ -396,7 +396,7 @@ BEGIN
             FROM tmp_igdt_dest d JOIN requirement r ON r.id = d.rq_id WHERE d.cand_id IS NOT NULL;
         END IF;
       END IF;
-    ELSEIF e_type IN ('RENEWED', 'TRANSFERRED', 'TERMINATED') THEN
+    ELSEIF e_type IN ('RENEWED', 'TRANSFERRED', 'MOVED', 'TERMINATED') THEN
       IF v_cand IS NOT NULL AND NOT EXISTS (
            SELECT 1 FROM requirement_candidate_event e WHERE e.candidate_id = v_cand AND e.type = CONCAT('HIRE_', e_type)
               AND e_op IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(e.data, '$.operationId')) = e_op) THEN
