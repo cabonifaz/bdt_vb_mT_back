@@ -88,7 +88,7 @@ func (r IGDTRepo) ApplyHires(ctx context.Context, tenantID uint64, events json.R
 		return nil, err
 	}
 	defer rs.Close()
-	out := &ports.IGDTHiresApplied{Closed: []string{}, Revoked: []ports.IGDTRevokedHire{}}
+	out := &ports.IGDTHiresApplied{Closed: []string{}, Revoked: []ports.IGDTRevokedHire{}, Moved: []ports.IGDTMovedCandidate{}}
 	if rs.Next() {
 		if err := rs.Each(func(scan func(...any) error) error {
 			var id, code string
@@ -108,6 +108,18 @@ func (r IGDTRepo) ApplyHires(ctx context.Context, tenantID uint64, events json.R
 				return err
 			}
 			out.Revoked = append(out.Revoked, h)
+			return nil
+		}); err != nil {
+			return nil, err
+		}
+	}
+	if rs.Next() {
+		if err := rs.Each(func(scan func(...any) error) error {
+			var m ports.IGDTMovedCandidate
+			if err := scan(&m.RQID, &m.RQCode, &m.RQTitle, &m.CandidateID, &m.TalentName, &m.FromCode); err != nil {
+				return err
+			}
+			out.Moved = append(out.Moved, m)
 			return nil
 		}); err != nil {
 			return nil, err

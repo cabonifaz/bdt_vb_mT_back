@@ -396,3 +396,39 @@ func (s *NotificationService) deliver(id string, targets []ports.PushTarget, msg
 		}
 	}
 }
+
+// CandidateFromIGDT: IGDT pidió llevar a un talento a este RQ (cambio de RQ); BDT ya lo agregó como candidato en
+// «Observado». Se avisa a los responsables del RQ y a los jefes de selección.
+func (s *NotificationService) CandidateFromIGDT(ctx context.Context, tenantID uint64, tenantSlug string, m ports.IGDTMovedCandidate) {
+	payload, _ := json.Marshal(map[string]any{"name": m.TalentName, "code": m.RQCode, "title": m.RQTitle, "from": m.FromCode,
+		"candidateId": m.CandidateID})
+	in := ports.NotifyInput{ID: uuid.NewString(), Type: domain.NotifIGDTRQChange, EntityType: "REQUIREMENT", EntityID: m.RQID, Payload: payload}
+	res, err := s.Repo.NotifyUsers(context.WithoutCancel(ctx), ports.Meta{}, tenantID, in, ports.AudienceRQTeam, 0, []string{"SELECTION_LEAD"})
+	if err != nil {
+		slog.Warn("no se pudo notificar el candidato traído desde IGDT", "rq", m.RQCode, "err", err)
+		return
+	}
+	if len(res.Targets) == 0 || s.Push == nil || !s.Push.Enabled() {
+		return
+	}
+	link := "/" + tenantSlug + "/requerimientos/" + m.RQID
+	go s.deliver(res.ID, res.Targets, func(locale string) pushMessage { return igdtRQChangePush(locale, m, link, res.ID) })
+}
+
+func igdtRQChangePush(locale string, m ports.IGDTMovedCandidate, link, id string) pushMessage {
+	title := "Candidato traído desde IGDT"
+	body := fmt.Sprintf("%s pasa a %s · %s (cambio de RQ", m.TalentName, m.RQCode, m.RQTitle)
+	if m.FromCode != "" {
+		body += " desde " + m.FromCode
+	}
+	body += ")."
+	if strings.HasPrefix(locale, "en") {
+		title = "Candidate brought from IGDT"
+		body = fmt.Sprintf("%s moves to %s · %s (requirement change", m.TalentName, m.RQCode, m.RQTitle)
+		if m.FromCode != "" {
+			body += " from " + m.FromCode
+		}
+		body += ")."
+	}
+	return pushMessage{Title: title, Body: body, URL: link, Tag: "igdt-rq-change-" + m.CandidateID, ID: id}
+}

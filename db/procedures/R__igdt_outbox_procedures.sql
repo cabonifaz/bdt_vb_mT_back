@@ -266,31 +266,56 @@ DELIMITER $$
 --   START_CHANGED: al candidato ya ingresado le cambia la fecha de inicio (evento HIRE_START_CHANGED).
 --   REVOKED: el cliente revocó el ingreso antes de empezar: el candidato deja de estar ingresado (evento HIRE_REVOKED). El RQ
 --     cerrado NO se reabre solo (eso lo decide selección); la API avisa a los responsables y a quienes pueden reabrir.
+--   RENEWED / TRANSFERRED: renovación del contrato y cambio de área; solo quedan en el historial del candidato
+--     (HIRE_RENEWED / HIRE_TRANSFERRED con los datos del evento). No cambian el pipeline.
+--   TERMINATED: fin del contrato (cese): baja efectiva (offboard_status EFFECTIVE, offboard_at = fecha de cese) y evento
+--     HIRE_TERMINATED. El candidato sigue como ingresado (historial; el RQ no pierde cobertura ni se reabre) y el talento
+--     vuelve a estar disponible (Inmediata) si estaba «No disponible» o sin dato y no tiene otro ingreso vigente.
+--   RQ_CHANGE_REQUESTED: IGDT pide llevar al talento a otro(s) RQ (requirements[], o requirementId). En cada RQ destino del
+--     tenant, no eliminado y abierto, se agrega como candidato en «Observado» (primera vacante con cupo) si no está ya,
+--     con su origen (igdt_origin) y el evento IGDT_RQ_CHANGE; si ya estaba, solo se registra el evento. Idempotente por
+--     operationId + RQ. El candidato de origen registra IGDT_RQ_MOVED. Un talento puede quedar en varios RQ.
+--   Los tipos desconocidos se ignoran; RENEWED/TRANSFERRED/TERMINATED con operationId repetido no se duplican.
 -- Cierra como Atendido el RQ abierto que ya tiene tantos ingresos (vigentes) como vacantes. Los RQ afectados vuelven a
--- publicarse en IGDT. Devuelve: (1) los RQ cerrados; (2) los ingresos revocados (para avisar).
+-- publicarse en IGDT. Devuelve: (1) los RQ cerrados; (2) los ingresos revocados (para avisar); (3) los candidatos traídos
+-- desde IGDT por cambio de RQ (para avisar a los responsables del RQ destino).
 DROP PROCEDURE IF EXISTS sp_igdt_apply_hires $$
 CREATE PROCEDURE sp_igdt_apply_hires(IN p_tenant_id BIGINT UNSIGNED, IN p_events JSON, IN p_cursor BIGINT UNSIGNED)
 BEGIN
-  DECLARE v_attended BIGINT UNSIGNED;
+  DECLARE v_attended, v_observed, v_immediate BIGINT UNSIGNED;
   DECLARE v_done TINYINT DEFAULT 0;
-  DECLARE v_cand, v_rq BIGINT UNSIGNED;
+  DECLARE v_cand, v_rq, v_talent, v_from_rq BIGINT UNSIGNED;
   DECLARE v_hired_at DATETIME(3);
   DECLARE v_old_start DATE;
+  DECLARE v_from_code VARCHAR(30);
   DECLARE e_type VARCHAR(20);
   DECLARE e_cid CHAR(36);
-  DECLARE e_start, e_prev DATE;
+  DECLARE e_start, e_prev, e_term, e_date DATE;
   DECLARE e_position VARCHAR(150);
   DECLARE e_reason VARCHAR(500);
+  DECLARE e_ev, e_reqs JSON;
+  DECLARE e_op VARCHAR(64);
+  DECLARE e_from_rq, e_talent, e_req1, e_hire CHAR(36);
   DECLARE cur_ev CURSOR FOR
-    SELECT j.type, j.cid, j.start_date, j.prev_start, j.position, j.reason
+    SELECT j.type, j.cid, j.start_date, j.prev_start, j.position, j.reason, j.ev, j.op, j.from_rq, j.talent, j.reqs, j.req1,
+           j.term_date, j.ev_date, j.hire
       FROM JSON_TABLE(IFNULL(p_events, JSON_ARRAY()), '$[*]' COLUMNS (
              ord FOR ORDINALITY,
-             type VARCHAR(20) PATH '$.type', cid CHAR(36) PATH '$.candidateId',
+             type VARCHAR(20) PATH '$.type', cid CHAR(36) PATH '$.candidateId' NULL ON ERROR,
              start_date DATE PATH '$.startDate' NULL ON EMPTY NULL ON ERROR,
              prev_start DATE PATH '$.previousStartDate' NULL ON EMPTY NULL ON ERROR,
              position VARCHAR(150) PATH '$.position' NULL ON EMPTY NULL ON ERROR,
-             reason VARCHAR(500) PATH '$.reason' NULL ON EMPTY NULL ON ERROR)) j
-     WHERE j.type IN ('HIRED', 'START_CHANGED', 'REVOKED')
+             reason VARCHAR(500) PATH '$.reason' NULL ON EMPTY NULL ON ERROR,
+             ev JSON PATH '$',
+             op VARCHAR(64) PATH '$.operationId' NULL ON EMPTY NULL ON ERROR,
+             from_rq CHAR(36) PATH '$.fromRequirementId' NULL ON EMPTY NULL ON ERROR,
+             talent CHAR(36) PATH '$.talentId' NULL ON EMPTY NULL ON ERROR,
+             reqs JSON PATH '$.requirements' NULL ON EMPTY NULL ON ERROR,
+             req1 CHAR(36) PATH '$.requirementId' NULL ON EMPTY NULL ON ERROR,
+             term_date DATE PATH '$.terminationDate' NULL ON EMPTY NULL ON ERROR,
+             ev_date DATE PATH '$.date' NULL ON EMPTY NULL ON ERROR,
+             hire CHAR(36) PATH '$.hireId' NULL ON EMPTY NULL ON ERROR)) j
+     WHERE j.type IN ('HIRED', 'START_CHANGED', 'REVOKED', 'RENEWED', 'TRANSFERRED', 'TERMINATED', 'RQ_CHANGE_REQUESTED')
      ORDER BY j.ord;
   DECLARE CONTINUE HANDLER FOR NOT FOUND SET v_done = 1;
   DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN ROLLBACK; RESIGNAL; END;
@@ -300,15 +325,100 @@ BEGIN
   CREATE TEMPORARY TABLE tmp_igdt_rqs (id BIGINT UNSIGNED PRIMARY KEY) ENGINE=MEMORY;
   DROP TEMPORARY TABLE IF EXISTS tmp_igdt_revoked;
   CREATE TEMPORARY TABLE tmp_igdt_revoked (candidate_id BIGINT UNSIGNED PRIMARY KEY, reason VARCHAR(500) NULL) ENGINE=MEMORY;
+  DROP TEMPORARY TABLE IF EXISTS tmp_igdt_moved;
+  CREATE TEMPORARY TABLE tmp_igdt_moved (candidate_id BIGINT UNSIGNED PRIMARY KEY, from_code VARCHAR(30) NULL) ENGINE=MEMORY;
+  DROP TEMPORARY TABLE IF EXISTS tmp_igdt_dest;
+  CREATE TEMPORARY TABLE tmp_igdt_dest (rq_id BIGINT UNSIGNED PRIMARY KEY, vac_id BIGINT UNSIGNED NULL,
+    cand_id BIGINT UNSIGNED NULL, added TINYINT NOT NULL DEFAULT 0) ENGINE=MEMORY;
+  SET v_observed = (SELECT i.id FROM master_item i JOIN master_table t ON t.id = i.master_table_id AND t.code = 'CANDIDATE_STAGE'
+                     WHERE i.code = 'OBSERVED' AND i.tenant_id IS NULL AND i.deleted_at IS NULL LIMIT 1);
+  SET v_immediate = (SELECT i.id FROM master_item i JOIN master_table t ON t.id = i.master_table_id AND t.code = 'TALENT_AVAILABILITY'
+                      WHERE i.code = 'IMMEDIATE' AND i.tenant_id IS NULL AND i.deleted_at IS NULL LIMIT 1);
   START TRANSACTION;
   OPEN cur_ev;
   ev: LOOP
-    FETCH cur_ev INTO e_type, e_cid, e_start, e_prev, e_position, e_reason;
+    FETCH cur_ev INTO e_type, e_cid, e_start, e_prev, e_position, e_reason, e_ev, e_op, e_from_rq, e_talent, e_reqs, e_req1,
+                      e_term, e_date, e_hire;
     IF v_done = 1 THEN LEAVE ev; END IF;
     -- SET (SELECT ...) no dispara NOT FOUND: un candidato inexistente no corta el recorrido
     SET v_cand = (SELECT rc.id FROM requirement_candidate rc JOIN requirement r ON r.id = rc.requirement_id AND r.tenant_id = p_tenant_id
                    WHERE rc.uuid = e_cid LIMIT 1);
-    IF v_cand IS NOT NULL THEN
+    IF e_type = 'RQ_CHANGE_REQUESTED' THEN
+      -- talento: el del candidato de origen (uuid de BDT) o, si no, talentId
+      SET v_talent = IFNULL((SELECT talent_id FROM requirement_candidate WHERE id = v_cand),
+                            (SELECT id FROM talent WHERE uuid = e_talent AND tenant_id = p_tenant_id AND deleted_at IS NULL LIMIT 1));
+      SET v_from_rq = (SELECT id FROM requirement WHERE uuid = e_from_rq AND tenant_id = p_tenant_id LIMIT 1);
+      SET v_from_rq = IFNULL(v_from_rq, (SELECT requirement_id FROM requirement_candidate WHERE id = v_cand));
+      SET v_from_code = (SELECT code FROM requirement WHERE id = v_from_rq);
+      IF v_talent IS NOT NULL AND v_observed IS NOT NULL THEN
+        DELETE FROM tmp_igdt_dest;
+        -- RQ destino del tenant, no eliminados y abiertos (distintos del de origen), aún no aplicados para esta operación
+        INSERT IGNORE INTO tmp_igdt_dest (rq_id, vac_id, cand_id)
+        SELECT r.id,
+               (SELECT v.id FROM requirement_vacancy v WHERE v.requirement_id = r.id AND v.deleted_at IS NULL
+                 ORDER BY (SELECT COUNT(*) FROM requirement_candidate x JOIN master_item xs ON xs.id = x.stage_item_id
+                            WHERE x.vacancy_id = v.id AND x.deleted_at IS NULL AND x.resigned_at IS NULL AND xs.code = 'CONFIRMED') < v.quantity DESC,
+                          v.sort_order, v.id LIMIT 1),
+               (SELECT x.id FROM requirement_candidate x WHERE x.requirement_id = r.id AND x.talent_id = v_talent AND x.deleted_at IS NULL LIMIT 1)
+          FROM JSON_TABLE(IFNULL(e_reqs, JSON_ARRAY(JSON_OBJECT('id', e_req1))), '$[*]' COLUMNS (id CHAR(36) PATH '$.id' NULL ON ERROR)) d
+          JOIN requirement r ON r.uuid = d.id AND r.tenant_id = p_tenant_id AND r.deleted_at IS NULL
+          JOIN master_item s ON s.id = r.status_item_id AND IFNULL(s.str1, 'OPEN') = 'OPEN'
+         WHERE NOT (r.id <=> v_from_rq)
+           AND NOT EXISTS (SELECT 1 FROM requirement_candidate x JOIN requirement_candidate_event e ON e.candidate_id = x.id
+                            WHERE x.requirement_id = r.id AND e.type = 'IGDT_RQ_CHANGE' AND e_op IS NOT NULL
+                              AND JSON_UNQUOTE(JSON_EXTRACT(e.data, '$.operationId')) = e_op);
+        -- nuevos candidatos en «Observado», con su origen
+        UPDATE tmp_igdt_dest SET added = 1 WHERE cand_id IS NULL AND vac_id IS NOT NULL;
+        INSERT INTO requirement_candidate (uuid, requirement_id, vacancy_id, talent_id, stage_item_id, igdt_origin)
+        SELECT UUID(), d.rq_id, d.vac_id, v_talent, v_observed,
+               JSON_OBJECT('source', 'IGDT_RQ_CHANGE', 'operationId', e_op, 'fromRequirementId', e_from_rq, 'fromCode', v_from_code,
+                           'date', DATE_FORMAT(e_date, '%Y-%m-%d'), 'hireId', e_hire)
+          FROM tmp_igdt_dest d WHERE d.added = 1;
+        UPDATE tmp_igdt_dest d SET d.cand_id = (SELECT x.id FROM requirement_candidate x WHERE x.requirement_id = d.rq_id
+                                                 AND x.talent_id = v_talent AND x.deleted_at IS NULL LIMIT 1)
+         WHERE d.added = 1;
+        INSERT INTO requirement_candidate_event (candidate_id, type, data)
+        SELECT d.cand_id, 'ADDED', JSON_OBJECT('stage', 'OBSERVED', 'source', 'IGDT') FROM tmp_igdt_dest d WHERE d.added = 1 AND d.cand_id IS NOT NULL;
+        INSERT INTO requirement_candidate_event (candidate_id, type, data)
+        SELECT d.cand_id, 'IGDT_RQ_CHANGE', JSON_OBJECT('operationId', e_op, 'fromRequirementId', e_from_rq, 'fromCode', v_from_code,
+                 'date', DATE_FORMAT(e_date, '%Y-%m-%d'), 'hireId', e_hire, 'added', d.added = 1, 'source', 'IGDT')
+          FROM tmp_igdt_dest d WHERE d.cand_id IS NOT NULL;
+        INSERT IGNORE INTO tmp_igdt_moved SELECT d.cand_id, v_from_code FROM tmp_igdt_dest d WHERE d.added = 1 AND d.cand_id IS NOT NULL;
+        INSERT IGNORE INTO tmp_igdt_rqs SELECT d.rq_id FROM tmp_igdt_dest d WHERE d.cand_id IS NOT NULL;
+        UPDATE requirement r JOIN tmp_igdt_dest d ON d.rq_id = r.id AND d.added = 1 SET r.updated_at = NOW(3);
+        -- historial del candidato de origen: a qué RQ lo llevó IGDT
+        IF v_cand IS NOT NULL AND EXISTS (SELECT 1 FROM tmp_igdt_dest WHERE cand_id IS NOT NULL) AND NOT EXISTS (
+             SELECT 1 FROM requirement_candidate_event e WHERE e.candidate_id = v_cand AND e.type = 'IGDT_RQ_MOVED'
+                AND e_op IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(e.data, '$.operationId')) = e_op) THEN
+          INSERT INTO requirement_candidate_event (candidate_id, type, data)
+          SELECT v_cand, 'IGDT_RQ_MOVED', JSON_OBJECT('operationId', e_op, 'date', DATE_FORMAT(e_date, '%Y-%m-%d'), 'source', 'IGDT',
+                   'to', JSON_ARRAYAGG(r.code))
+            FROM tmp_igdt_dest d JOIN requirement r ON r.id = d.rq_id WHERE d.cand_id IS NOT NULL;
+        END IF;
+      END IF;
+    ELSEIF e_type IN ('RENEWED', 'TRANSFERRED', 'TERMINATED') THEN
+      IF v_cand IS NOT NULL AND NOT EXISTS (
+           SELECT 1 FROM requirement_candidate_event e WHERE e.candidate_id = v_cand AND e.type = CONCAT('HIRE_', e_type)
+              AND e_op IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(e.data, '$.operationId')) = e_op) THEN
+        INSERT INTO requirement_candidate_event (candidate_id, type, data)
+        VALUES (v_cand, CONCAT('HIRE_', e_type), JSON_SET(IFNULL(e_ev, JSON_OBJECT()), '$.source', 'IGDT'));
+        IF e_type = 'TERMINATED' THEN
+          UPDATE requirement_candidate SET offboard_status = 'EFFECTIVE', offboard_at = IFNULL(CAST(e_term AS DATETIME(3)), NOW(3))
+           WHERE id = v_cand;
+          SET v_talent = (SELECT talent_id FROM requirement_candidate WHERE id = v_cand);
+          -- el talento vuelve a estar disponible si no tiene otro ingreso vigente (y no tenía una disponibilidad elegida)
+          IF v_immediate IS NOT NULL AND NOT EXISTS (
+               SELECT 1 FROM requirement_candidate x JOIN requirement rx ON rx.id = x.requirement_id AND rx.deleted_at IS NULL
+                WHERE x.talent_id = v_talent AND x.id <> v_cand AND x.deleted_at IS NULL AND x.hired_at IS NOT NULL
+                  AND x.resigned_at IS NULL AND IFNULL(x.offboard_status, '') <> 'EFFECTIVE') THEN
+            UPDATE talent t LEFT JOIN master_item av ON av.id = t.availability_item_id
+               SET t.availability_item_id = v_immediate, t.version = t.version + 1
+             WHERE t.id = v_talent AND (t.availability_item_id IS NULL OR av.code = 'UNAVAILABLE');
+          END IF;
+          INSERT IGNORE INTO tmp_igdt_rqs SELECT requirement_id FROM requirement_candidate WHERE id = v_cand;
+        END IF;
+      END IF;
+    ELSEIF v_cand IS NOT NULL THEN
       SET v_rq = (SELECT requirement_id FROM requirement_candidate WHERE id = v_cand);
       SET v_hired_at = (SELECT hired_at FROM requirement_candidate WHERE id = v_cand);
       SET v_old_start = (SELECT hire_start_date FROM requirement_candidate WHERE id = v_cand);
@@ -367,8 +477,16 @@ BEGIN
     JOIN requirement_candidate rc ON rc.id = x.candidate_id
     JOIN requirement r ON r.id = rc.requirement_id
     JOIN talent tl ON tl.id = rc.talent_id;
+  SELECT r.uuid AS rq_uuid, r.code, r.title, rc.uuid AS candidate_uuid,
+         CONCAT_WS(' ', tl.first_name, tl.last_name, tl.second_last_name) AS talent_name, IFNULL(x.from_code, '') AS from_code
+    FROM tmp_igdt_moved x
+    JOIN requirement_candidate rc ON rc.id = x.candidate_id
+    JOIN requirement r ON r.id = rc.requirement_id
+    JOIN talent tl ON tl.id = rc.talent_id;
   DROP TEMPORARY TABLE IF EXISTS tmp_igdt_rqs;
   DROP TEMPORARY TABLE IF EXISTS tmp_igdt_revoked;
+  DROP TEMPORARY TABLE IF EXISTS tmp_igdt_moved;
+  DROP TEMPORARY TABLE IF EXISTS tmp_igdt_dest;
   DROP TEMPORARY TABLE IF EXISTS tmp_igdt_closed;
 END $$
 

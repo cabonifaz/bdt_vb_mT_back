@@ -75,7 +75,7 @@ BEGIN
   CALL sp_assert_actor(p_actor_id, p_tenant_id, 'rq.read');
   CALL sp_candidate_resolve(p_tenant_id, p_uuid, v_id, v_rq, v_talent);
   SELECT JSON_OBJECT(
-           'id', rc.uuid, 'updatedAt', IFNULL(rc.updated_at, rc.created_at), 'addedAt', rc.created_at,
+           'id', rc.uuid, 'updatedAt', IFNULL(rc.updated_at, rc.created_at), 'addedAt', rc.created_at, 'origin', rc.igdt_origin,
            'requirement', JSON_OBJECT('id', r.uuid, 'code', r.code, 'title', r.title, 'closed', s.str1 = 'CLOSED'),
            'stage', JSON_OBJECT('id', cs.uuid, 'code', cs.code, 'label', cs.label_i18n),
            'vacancy', JSON_OBJECT('id', v.uuid, 'profile', p.label_i18n),

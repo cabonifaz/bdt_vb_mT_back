@@ -404,6 +404,13 @@ func (s *IGDTService) pullHires(ctx context.Context, t ports.IGDTTarget) {
 				s.Notifier.HireRevoked(ctx, t.TenantID, t.Slug, h)
 			}
 		}
+		// cambio de RQ pedido desde IGDT: el talento quedó como candidato en el RQ destino; se avisa a sus responsables
+		for _, m := range applied.Moved {
+			slog.Info("igdt: candidato traído por cambio de RQ", "tenant", t.Slug, "rq", m.RQCode, "from", m.FromCode, "candidate", m.CandidateID)
+			if s.Notifier != nil {
+				s.Notifier.CandidateFromIGDT(ctx, t.TenantID, t.Slug, m)
+			}
+		}
 		// los RQ con ingresos quedaron en la cola: se reenvían a IGDT ya, sin esperar la próxima vuelta
 		if err := s.drain(ctx, t); err != nil {
 			slog.Warn("igdt: envío fallido", "tenant", t.Slug, "err", domain.AsError(err).Code)

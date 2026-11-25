@@ -29,6 +29,8 @@ const (
 // IGDTNotifier avisa de los ingresos revocados en IGDT (a los responsables del RQ y a quienes pueden reabrirlo).
 type IGDTNotifier interface {
 	HireRevoked(ctx context.Context, tenantID uint64, tenantSlug string, h ports.IGDTRevokedHire)
+	// CandidateFromIGDT avisa a los responsables del RQ destino que IGDT trajo un talento por cambio de RQ.
+	CandidateFromIGDT(ctx context.Context, tenantID uint64, tenantSlug string, m ports.IGDTMovedCandidate)
 }
 
 // ensureLink entrega a IGDT la llave BDT del tenant si aún no la tiene. force ignora la espera entre reintentos

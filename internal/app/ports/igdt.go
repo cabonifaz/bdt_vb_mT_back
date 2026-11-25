@@ -50,6 +50,13 @@ type IGDTRevokedHire struct {
 type IGDTHiresApplied struct {
 	Closed  []string // códigos de los RQ cerrados como Atendido
 	Revoked []IGDTRevokedHire
+	// Moved: candidatos que IGDT llevó a otro RQ (RQ_CHANGE_REQUESTED) y que BDT agregó al RQ destino
+	Moved []IGDTMovedCandidate
+}
+
+// IGDTMovedCandidate: talento traído desde IGDT a un RQ destino por cambio de RQ (FromCode: RQ de origen, "" si no se conoce).
+type IGDTMovedCandidate struct {
+	RQID, RQCode, RQTitle, CandidateID, TalentName, FromCode string
 }
 
 type IGDTRepository interface {

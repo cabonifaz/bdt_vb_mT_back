@@ -3,6 +3,10 @@
 Formato: `## vMAYOR.MENOR — AAAA-MM-DD`, seguido de los cambios en viñetas (español). Al publicar una versión se
 sube `VERSION` y se agrega su sección aquí: la API la registra al desplegarse en cada ambiente y la notifica.
 
+## v1.17 — 2026-11-25
+- Cambio de RQ desde IGDT: cuando IGDT pide llevar a un talento a otro requerimiento (uno o varios), BDT lo agrega como candidato en «Observado» en cada requerimiento destino abierto (si no estaba ya), indica en su tarjeta y en su ficha «Traído desde IGDT (cambio de RQ desde RQ-…)» y avisa a los responsables del requerimiento y a los jefes de selección. Un talento puede estar en varios requerimientos a la vez.
+- Fin de contrato desde IGDT: el cese marca la baja como efectiva con su fecha, el candidato se ve como «Cesó» y el talento vuelve a estar disponible (si estaba «No disponible»). Las renovaciones y los cambios de área se registran en la línea de tiempo del candidato, sin cambiar el pipeline.
+
 ## v1.16 — 2026-11-25
 - Gestor dirigido: al confirmar a un candidato, junto a la fecha tentativa de inicio, Selección puede elegir «Dirigir a gestor (IGDT)». Por defecto la solicitud de ingreso va a los gestores del cliente; también se puede dirigir a cualquier otro gestor de IGDT. El selector muestra primero los gestores del cliente del requerimiento y sugiere el último gestor elegido en el mismo requerimiento.
 - El gestor dirigido se puede cambiar junto con la fecha mientras IGDT no haya registrado el ingreso; IGDT recibe el cambio automáticamente y queda en la línea de tiempo del postulante.

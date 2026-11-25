@@ -20,10 +20,11 @@ const (
 	NotifVersionPublished = "VERSION_PUBLISHED" // a todos: se publicó una versión nueva en el ambiente
 	NotifRQStale          = "RQ_STALE"          // a los responsables y jefes de selección: RQ sin movimiento de postulantes
 	NotifHireRevoked      = "HIRE_REVOKED"      // a los responsables del RQ y a quienes pueden reabrirlo: el cliente revocó un ingreso en IGDT
+	NotifIGDTRQChange     = "IGDT_RQ_CHANGE"    // a los responsables del RQ (y jefes de selección): IGDT trajo un talento por cambio de RQ
 )
 
 // NotificationTypes: tipos que el usuario puede configurar (en la app y push).
-var NotificationTypes = []string{NotifTalentCreated, NotifTalentUpdated, NotifRQCreated, NotifRQUpdated, NotifSupportNew, NotifSupportReply, NotifReleaseNote, NotifFeatureNew, NotifFeatureEnabled, NotifVersionPublished, NotifRQStale, NotifHireRevoked}
+var NotificationTypes = []string{NotifTalentCreated, NotifTalentUpdated, NotifRQCreated, NotifRQUpdated, NotifSupportNew, NotifSupportReply, NotifReleaseNote, NotifFeatureNew, NotifFeatureEnabled, NotifVersionPublished, NotifRQStale, NotifHireRevoked, NotifIGDTRQChange}
 
 func ValidNotificationType(t string) bool { return slices.Contains(NotificationTypes, t) }
 
