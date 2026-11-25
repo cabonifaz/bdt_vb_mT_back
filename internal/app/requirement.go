@@ -432,21 +432,42 @@ func validStartDate(s string, now time.Time) bool {
 }
 
 // MoveCandidate mueve al candidato de etapa/vacante. startDate (fecha tentativa de inicio de labores) es obligatoria
-// al confirmar (lo exige el SP, que conoce la etapa); si viene, se valida aquí.
-func (s *RequirementService) MoveCandidate(ctx context.Context, p *domain.Principal, ip, id, stageID string, vacancyID *string, order *int, startDate *string) (string, error) {
+// al confirmar (lo exige el SP, que conoce la etapa); si viene, se valida aquí. managerID: gestor de IGDT al que se
+// dirige la solicitud de ingreso (nil = gestores del cliente).
+func (s *RequirementService) MoveCandidate(ctx context.Context, p *domain.Principal, ip, id, stageID string, vacancyID *string, order *int, startDate, managerID *string) (string, error) {
 	tid, err := tenantOf(p)
 	if err != nil {
 		return "", err
 	}
 	vacancyID = nilIfEmpty(vacancyID)
 	startDate = nilIfEmpty(startDate)
-	if !validUUID(id) || !validUUID(stageID) || !optRef(vacancyID) || (order != nil && (*order < 0 || *order > 1_000_000)) ||
+	managerID = nilIfEmpty(managerID)
+	if !validUUID(id) || !validUUID(stageID) || !optRef(vacancyID) || !optRef(managerID) || (order != nil && (*order < 0 || *order > 1_000_000)) ||
 		(startDate != nil && !validStartDate(*startDate, time.Now())) {
 		return "", domain.ErrValidation
 	}
-	to, err := s.Repo.CandidateMove(ctx, meta(p, ip), tid, id, stageID, vacancyID, order, startDate)
+	to, err := s.Repo.CandidateMove(ctx, meta(p, ip), tid, id, stageID, vacancyID, order, startDate, managerID)
 	s.outCandidate(ctx, tid, id, err)
 	return to, err
+}
+
+// SaveHire guarda las condiciones del ingreso propias del confirmado (fecha tentativa obligatoria y gestor dirigido,
+// nil = gestores del cliente) mientras IGDT no registre el ingreso, y re-encola la solicitud de ingreso.
+func (s *RequirementService) SaveHire(ctx context.Context, p *domain.Principal, ip, id, startDate string, managerID *string) error {
+	tid, err := tenantOf(p)
+	if err != nil {
+		return err
+	}
+	if !validUUID(id) {
+		return domain.ErrNotFound
+	}
+	managerID = nilIfEmpty(managerID)
+	if !validStartDate(startDate, time.Now()) || !optRef(managerID) {
+		return domain.ErrValidation
+	}
+	err = s.Repo.CandidateHireSave(ctx, meta(p, ip), tid, id, startDate, managerID)
+	s.outCandidate(ctx, tid, id, err)
+	return err
 }
 
 // SetCandidateStartDate corrige la fecha tentativa de inicio de un confirmado (mientras IGDT no registre el ingreso)

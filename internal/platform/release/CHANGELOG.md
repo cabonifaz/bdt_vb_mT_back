@@ -3,6 +3,11 @@
 Formato: `## vMAYOR.MENOR — AAAA-MM-DD`, seguido de los cambios en viñetas (español). Al publicar una versión se
 sube `VERSION` y se agrega su sección aquí: la API la registra al desplegarse en cada ambiente y la notifica.
 
+## v1.16 — 2026-11-25
+- Gestor dirigido: al confirmar a un candidato, junto a la fecha tentativa de inicio, Selección puede elegir «Dirigir a gestor (IGDT)». Por defecto la solicitud de ingreso va a los gestores del cliente; también se puede dirigir a cualquier otro gestor de IGDT. El selector muestra primero los gestores del cliente del requerimiento y sugiere el último gestor elegido en el mismo requerimiento.
+- El gestor dirigido se puede cambiar junto con la fecha mientras IGDT no haya registrado el ingreso; IGDT recibe el cambio automáticamente y queda en la línea de tiempo del postulante.
+- Si IGDT no responde, el selector ofrece solo «Gestores del cliente» y la confirmación no se bloquea.
+
 ## v1.15 — 2026-11-25
 - Al confirmar a un candidato en el pipeline del requerimiento, Selección debe registrar la fecha tentativa de inicio de labores (no anterior a 30 días atrás ni posterior a un año). La fecha se ve en la tarjeta del candidato confirmado y se puede corregir mientras IGDT no haya registrado el ingreso; cada cambio queda en la línea de tiempo del postulante.
 - La solicitud de ingreso que BDT envía a IGDT incluye la fecha tentativa de inicio, y se vuelve a enviar cada vez que la fecha cambia. Los candidatos confirmados antes de esta versión quedan sin fecha hasta que Selección la registre.

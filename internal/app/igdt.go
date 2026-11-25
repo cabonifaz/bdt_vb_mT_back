@@ -28,6 +28,8 @@ type IGDTService struct {
 	Cipher ports.Cipher
 	// Pepper: el de las API keys de BDT (para crear la llave BDT automática que se entrega a IGDT)
 	Pepper []byte
+	// Managers lee la lista de gestores de IGDT (gestor dirigido)
+	Managers ports.IGDTManagersReader
 	// Notifier avisa de los ingresos revocados en IGDT
 	Notifier IGDTNotifier
 
@@ -39,6 +41,8 @@ type IGDTService struct {
 	// linking / linkWait: entrega en curso de la llave BDT y próximo reintento, por tenant
 	linking  map[uint64]bool
 	linkWait map[uint64]time.Time
+	// mgrCache: lista de gestores de IGDT por tenant
+	mgrCache map[uint64]igdtManagersEntry
 }
 
 type igdtActive struct {

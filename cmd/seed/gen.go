@@ -607,7 +607,7 @@ func (e *env) genRQs(ctx context.Context, spec TenantSpec, n int, d rqDeps) {
 					d := time.Now().AddDate(0, 0, 7+e.intn(30)).Format("2006-01-02")
 					start = &d
 				}
-				_, err := e.rqs.MoveCandidate(ctx, owner.p, ip, cid, stage(code), nil, nil, start)
+				_, err := e.rqs.MoveCandidate(ctx, owner.p, ip, cid, stage(code), nil, nil, start, nil)
 				return !e.fails("mover candidato a "+code, err)
 			}
 			switch target {

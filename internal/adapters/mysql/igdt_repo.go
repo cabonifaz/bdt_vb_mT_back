@@ -115,3 +115,16 @@ func (r IGDTRepo) LinkKeyDrop(ctx context.Context, tenantID uint64, uuid, reason
 func (r IGDTRepo) TariffLookup(ctx context.Context, m ports.Meta, tenantID uint64, profileID string, clientID *string, date string) (json.RawMessage, error) {
 	return r.one(ctx, "sp_tariff_lookup", m.ActorID, tenantID, profileID, clientID, nullStr(date))
 }
+
+func (r IGDTRepo) ClientRemote(ctx context.Context, m ports.Meta, tenantID uint64, clientID string) (string, error) {
+	rs, err := r.call(ctx, "sp_igdt_client_remote", m.ActorID, tenantID, clientID)
+	if err != nil {
+		return "", err
+	}
+	defer rs.Close()
+	var remote string
+	if rs.Next() {
+		err = rs.One(&remote)
+	}
+	return remote, err
+}

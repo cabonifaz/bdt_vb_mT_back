@@ -76,7 +76,9 @@ type RequirementRepository interface {
 	Reopen(ctx context.Context, m Meta, tenantID uint64, id, reason, notes string, candidates []string, statusID *string) (*RQChange, error)
 	Delete(ctx context.Context, m Meta, tenantID uint64, id string) error
 	CandidateAdd(ctx context.Context, m Meta, tenantID uint64, rqID, id, talentID, vacancyID string) (bool, error)
-	CandidateMove(ctx context.Context, m Meta, tenantID uint64, id, stageID string, vacancyID *string, order *int, startDate *string) (string, error)
+	CandidateMove(ctx context.Context, m Meta, tenantID uint64, id, stageID string, vacancyID *string, order *int, startDate, managerID *string) (string, error)
+	// CandidateHireSave guarda la fecha tentativa (AAAA-MM-DD) y el gestor de IGDT dirigido (nil = gestores del cliente).
+	CandidateHireSave(ctx context.Context, m Meta, tenantID uint64, id, startDate string, managerID *string) error
 	// CandidateStartDate corrige la fecha tentativa de inicio de labores (AAAA-MM-DD) de un candidato confirmado.
 	CandidateStartDate(ctx context.Context, m Meta, tenantID uint64, id, startDate string) error
 	CandidateRemove(ctx context.Context, m Meta, tenantID uint64, id string) error

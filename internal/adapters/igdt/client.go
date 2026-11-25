@@ -145,6 +145,15 @@ func (c *Client) HireEvents(ctx context.Context, key string, since uint64, limit
 	return &out, nil
 }
 
+// Managers lee los gestores de servicios de IGDT y los gestores de cada cliente (alcance hires.write).
+func (c *Client) Managers(ctx context.Context, key string) (*ports.IGDTManagers, error) {
+	var out ports.IGDTManagers
+	if err := c.do(ctx, http.MethodGet, "/integration/v1/managers", key, nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // LinkBDT entrega a IGDT la llave BDT automática del tenant, con la que IGDT lee las fichas y los CV de los candidatos.
 // Un IGDT que aún no tiene el endpoint responde 404 (IGDT_LINK_UNSUPPORTED): se reintenta más tarde.
 func (c *Client) LinkBDT(ctx context.Context, key, bdtKey string) error {

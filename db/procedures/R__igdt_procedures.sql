@@ -81,6 +81,17 @@ BEGIN
    ORDER BY ti.tenant_id;
 END $$
 
+-- Id en IGDT de un cliente de BDT (el mismo que viaja en los snapshots: el de igdt_map si difiere, si no el de BDT), para
+-- ubicar sus gestores en la lista de gestores de IGDT. Vacío si el cliente no es del tenant.
+DROP PROCEDURE IF EXISTS sp_igdt_client_remote $$
+CREATE PROCEDURE sp_igdt_client_remote(IN p_actor_id BIGINT UNSIGNED, IN p_tenant_id BIGINT UNSIGNED, IN p_client_uuid CHAR(36))
+BEGIN
+  CALL sp_assert_actor(p_actor_id, p_tenant_id, 'rq.read');
+  SELECT COALESCE((SELECT m.remote_uuid FROM igdt_map m WHERE m.tenant_id = p_tenant_id AND m.entity = 'MASTER_ITEM' AND m.local_id = i.id), i.uuid) AS remote
+    FROM master_item i JOIN master_table t ON t.id = i.master_table_id AND t.code = 'CLIENT'
+   WHERE i.uuid = p_client_uuid AND (i.tenant_id = p_tenant_id OR i.tenant_id IS NULL);
+END $$
+
 -- Llave BDT automática para IGDT (alcances talent.read, talent.search y masters.read, ya habilitada): se crea solo si la integración está activa y
 -- el tenant aún no tiene una vigente. Devuelve created = 1 si la creó (la app la entrega a IGDT; si falla, la descarta
 -- con sp_igdt_link_key_drop). Sin actor: la llama la API (conexión, «Sincronizar ahora» o la sincronización periódica).

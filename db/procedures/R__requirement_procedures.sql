@@ -174,7 +174,7 @@ BEGIN
                        WHERE v.requirement_id = r.id AND v.deleted_at IS NULL), JSON_ARRAY()),
            'candidates', IFNULL((SELECT JSON_ARRAYAGG(JSON_OBJECT('id', rc.uuid, 'vacancyId', v.uuid, 'boardOrder', rc.board_order, 'notes', rc.notes,
                           'stage', JSON_OBJECT('id', cs.uuid, 'code', cs.code, 'label', cs.label_i18n), 'stageAt', rc.stage_at, 'updatedAt', IFNULL(rc.updated_at, rc.created_at),
-                          'tentativeStartDate', DATE_FORMAT(rc.tentative_start_date, '%Y-%m-%d'),
+                          'tentativeStartDate', DATE_FORMAT(rc.tentative_start_date, '%Y-%m-%d'), 'igdtManagerId', rc.igdt_manager_id,
                           'hire', IF(rc.hired_at IS NULL, NULL, JSON_OBJECT('at', rc.hired_at, 'startDate', rc.hire_start_date)),
                           'resignation', IF(rc.resigned_at IS NULL, NULL, JSON_OBJECT('at', rc.resigned_at, 'offboard', rc.offboard_status, 'offboardAt', rc.offboard_at)),
                           'docs', IFNULL((SELECT JSON_ARRAYAGG(JSON_OBJECT('typeId', rdt.uuid, 'mode', rd.mode,
@@ -594,10 +594,12 @@ END $$
 
 -- Mueve el candidato de etapa (y opcionalmente de vacante / orden). Confirmar exige haber pasado de "Observado",
 -- que la vacante tenga cupo (confirmados < cantidad) y la fecha tentativa de inicio de labores (p_start_date). Ya
--- confirmado, la fecha es opcional (si viene, se actualiza); al salir de Confirmado se limpia.
+-- confirmado, la fecha es opcional (si viene, se actualiza); al salir de Confirmado se limpia. p_manager_id: gestor de IGDT al
+-- que se dirige la solicitud de ingreso (NULL = gestores del cliente); ya confirmado, si viene se actualiza.
 DROP PROCEDURE IF EXISTS sp_rq_candidate_move $$
 CREATE PROCEDURE sp_rq_candidate_move(IN p_actor_id BIGINT UNSIGNED, IN p_tenant_id BIGINT UNSIGNED, IN p_uuid CHAR(36),
-  IN p_stage_uuid CHAR(36), IN p_vacancy_uuid CHAR(36), IN p_board_order INT, IN p_start_date DATE, IN p_ip VARCHAR(45))
+  IN p_stage_uuid CHAR(36), IN p_vacancy_uuid CHAR(36), IN p_board_order INT, IN p_start_date DATE, IN p_manager_id CHAR(36),
+  IN p_ip VARCHAR(45))
 BEGIN
   DECLARE v_id, v_rq, v_vac, v_new_vac, v_stage BIGINT UNSIGNED;
   DECLARE v_rq_uuid CHAR(36);
@@ -606,9 +608,11 @@ BEGIN
   DECLARE v_to VARCHAR(60);
   DECLARE v_resigned TINYINT(1);
   DECLARE v_old_start, v_new_start DATE;
+  DECLARE v_old_mgr, v_new_mgr CHAR(36);
   CALL sp_assert_actor(p_actor_id, p_tenant_id, 'rq.candidates');
-  SELECT rc.id, rc.requirement_id, rc.vacancy_id, cs.code, r.uuid, (s.str1 = 'CLOSED'), rc.resigned_at IS NOT NULL, rc.tentative_start_date
-    INTO v_id, v_rq, v_vac, v_from, v_rq_uuid, v_closed, v_resigned, v_old_start
+  SELECT rc.id, rc.requirement_id, rc.vacancy_id, cs.code, r.uuid, (s.str1 = 'CLOSED'), rc.resigned_at IS NOT NULL, rc.tentative_start_date,
+         rc.igdt_manager_id
+    INTO v_id, v_rq, v_vac, v_from, v_rq_uuid, v_closed, v_resigned, v_old_start, v_old_mgr
     FROM requirement_candidate rc
     JOIN requirement r ON r.id = rc.requirement_id AND r.tenant_id = p_tenant_id AND r.deleted_at IS NULL
     JOIN master_item s ON s.id = r.status_item_id
@@ -640,20 +644,28 @@ BEGIN
   IF v_to = 'CONFIRMED' THEN
     IF v_from <> 'CONFIRMED' OR p_start_date IS NOT NULL THEN CALL sp_rq_assert_start_date(p_start_date); END IF;
     SET v_new_start = IFNULL(p_start_date, v_old_start);
+    SET v_new_mgr = IF(v_from <> 'CONFIRMED', p_manager_id, IFNULL(p_manager_id, v_old_mgr));
   ELSE
-    SET v_new_start = NULL;
+    SET v_new_start = NULL, v_new_mgr = NULL;
   END IF;
   UPDATE requirement_candidate SET stage_at = IF(stage_item_id = v_stage, stage_at, NOW(3)), stage_item_id = v_stage,
          vacancy_id = v_new_vac, board_order = IFNULL(p_board_order, board_order), tentative_start_date = v_new_start,
-         updated_by = p_actor_id WHERE id = v_id;
+         igdt_manager_id = v_new_mgr, updated_by = p_actor_id WHERE id = v_id;
   UPDATE requirement SET updated_by = p_actor_id, updated_at = NOW(3) WHERE id = v_rq;
   IF v_from <> v_to OR v_new_vac <> v_vac THEN
     INSERT INTO requirement_candidate_event (candidate_id, type, data, created_by)
     VALUES (v_id, 'STAGE', JSON_OBJECT('from', v_from, 'to', v_to, 'vacancyChanged', v_new_vac <> v_vac,
-                                       'startDate', DATE_FORMAT(v_new_start, '%Y-%m-%d')), p_actor_id);
-  ELSEIF NOT (v_new_start <=> v_old_start) THEN
-    INSERT INTO requirement_candidate_event (candidate_id, type, data, created_by)
-    VALUES (v_id, 'START_DATE', JSON_OBJECT('from', DATE_FORMAT(v_old_start, '%Y-%m-%d'), 'to', DATE_FORMAT(v_new_start, '%Y-%m-%d')), p_actor_id);
+                                       'startDate', DATE_FORMAT(v_new_start, '%Y-%m-%d'),
+                                       'igdtManagerId', v_new_mgr), p_actor_id);
+  ELSE
+    IF NOT (v_new_start <=> v_old_start) THEN
+      INSERT INTO requirement_candidate_event (candidate_id, type, data, created_by)
+      VALUES (v_id, 'START_DATE', JSON_OBJECT('from', DATE_FORMAT(v_old_start, '%Y-%m-%d'), 'to', DATE_FORMAT(v_new_start, '%Y-%m-%d')), p_actor_id);
+    END IF;
+    IF NOT (v_new_mgr <=> v_old_mgr) THEN
+      INSERT INTO requirement_candidate_event (candidate_id, type, data, created_by)
+      VALUES (v_id, 'MANAGER', JSON_OBJECT('from', v_old_mgr, 'to', v_new_mgr), p_actor_id);
+    END IF;
   END IF;
   IF v_from <> v_to THEN
     CALL sp_audit_insert(p_tenant_id, p_actor_id, NULL, 'CANDIDATE_STAGE', 'requirement', v_rq_uuid,
@@ -694,6 +706,47 @@ BEGIN
          JSON_OBJECT('candidate', p_uuid, 'from', DATE_FORMAT(v_old, '%Y-%m-%d'), 'to', DATE_FORMAT(p_start_date, '%Y-%m-%d')), p_ip);
   END IF;
   SELECT DATE_FORMAT(p_start_date, '%Y-%m-%d') AS start_date;
+END $$
+
+-- Guarda las condiciones del ingreso propias del candidato confirmado: fecha tentativa de inicio (obligatoria) y gestor
+-- de IGDT dirigido (NULL = gestores del cliente), mientras IGDT no registre el ingreso. Como sp_rq_candidate_start_date,
+-- no cambia updated_by; cada cambio queda en la línea de tiempo (START_DATE / MANAGER) y en la auditoría.
+DROP PROCEDURE IF EXISTS sp_rq_candidate_hire_save $$
+CREATE PROCEDURE sp_rq_candidate_hire_save(IN p_actor_id BIGINT UNSIGNED, IN p_tenant_id BIGINT UNSIGNED, IN p_uuid CHAR(36),
+  IN p_start_date DATE, IN p_manager_id CHAR(36), IN p_ip VARCHAR(45))
+BEGIN
+  DECLARE v_id BIGINT UNSIGNED;
+  DECLARE v_rq_uuid CHAR(36);
+  DECLARE v_stage VARCHAR(60);
+  DECLARE v_resigned, v_hired TINYINT(1);
+  DECLARE v_old DATE;
+  DECLARE v_old_mgr CHAR(36);
+  CALL sp_assert_actor(p_actor_id, p_tenant_id, 'rq.candidates');
+  SELECT rc.id, r.uuid, cs.code, rc.resigned_at IS NOT NULL, rc.hired_at IS NOT NULL, rc.tentative_start_date, rc.igdt_manager_id
+    INTO v_id, v_rq_uuid, v_stage, v_resigned, v_hired, v_old, v_old_mgr
+    FROM requirement_candidate rc
+    JOIN requirement r ON r.id = rc.requirement_id AND r.tenant_id = p_tenant_id AND r.deleted_at IS NULL
+    JOIN master_item cs ON cs.id = rc.stage_item_id
+   WHERE rc.uuid = p_uuid AND rc.deleted_at IS NULL;
+  IF v_id IS NULL THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:NOT_FOUND'; END IF;
+  IF v_resigned = 1 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:CANDIDATE_RESIGNED'; END IF;
+  IF v_hired = 1 THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:CANDIDATE_HIRED'; END IF;
+  IF v_stage <> 'CONFIRMED' THEN SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'BDT:VALIDATION'; END IF;
+  CALL sp_rq_assert_start_date(p_start_date);
+  IF NOT (v_old <=> p_start_date) OR NOT (v_old_mgr <=> p_manager_id) THEN
+    UPDATE requirement_candidate SET tentative_start_date = p_start_date, igdt_manager_id = p_manager_id WHERE id = v_id;
+    IF NOT (v_old <=> p_start_date) THEN
+      INSERT INTO requirement_candidate_event (candidate_id, type, data, created_by)
+      VALUES (v_id, 'START_DATE', JSON_OBJECT('from', DATE_FORMAT(v_old, '%Y-%m-%d'), 'to', DATE_FORMAT(p_start_date, '%Y-%m-%d')), p_actor_id);
+    END IF;
+    IF NOT (v_old_mgr <=> p_manager_id) THEN
+      INSERT INTO requirement_candidate_event (candidate_id, type, data, created_by)
+      VALUES (v_id, 'MANAGER', JSON_OBJECT('from', v_old_mgr, 'to', p_manager_id), p_actor_id);
+    END IF;
+    CALL sp_audit_insert(p_tenant_id, p_actor_id, NULL, 'CANDIDATE_HIRE_CONDITIONS', 'requirement', v_rq_uuid,
+         JSON_OBJECT('candidate', p_uuid, 'startDate', DATE_FORMAT(p_start_date, '%Y-%m-%d'), 'igdtManagerId', p_manager_id), p_ip);
+  END IF;
+  SELECT DATE_FORMAT(p_start_date, '%Y-%m-%d') AS start_date, p_manager_id AS igdt_manager_id;
 END $$
 
 DROP PROCEDURE IF EXISTS sp_rq_candidate_remove $$

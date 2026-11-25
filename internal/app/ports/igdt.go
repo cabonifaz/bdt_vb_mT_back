@@ -68,6 +68,8 @@ type IGDTRepository interface {
 	// LinkKeyDrop descarta la llave automática que IGDT no recibió (revocada) y deja al tenant sin vincular.
 	LinkKeyDrop(ctx context.Context, tenantID uint64, uuid, reason string) error
 	TariffLookup(ctx context.Context, m Meta, tenantID uint64, profileID string, clientID *string, date string) (json.RawMessage, error)
+	// ClientRemote: id en IGDT de un cliente de BDT ("" si no es del tenant).
+	ClientRemote(ctx context.Context, m Meta, tenantID uint64, clientID string) (string, error)
 }
 
 // IGDTOutboxItem: envío pendiente a IGDT (Kind RQ: uuid del requerimiento; HIRE: uuid del candidato).
@@ -123,4 +125,27 @@ type IGDTHireEvents struct {
 // IGDTHiresReader lee los ingresos registrados en IGDT (alcance hires.read).
 type IGDTHiresReader interface {
 	HireEvents(ctx context.Context, key string, since uint64, limit int) (*IGDTHireEvents, error)
+}
+
+// IGDTManagers: gestores de servicios de IGDT (GET /integration/v1/managers, alcance hires.write) y los gestores
+// principal/secundario de cada cliente (clientId = id del cliente en IGDT; "" = sin gestor).
+type IGDTManagers struct {
+	Managers []IGDTManager       `json:"managers"`
+	Clients  []IGDTClientManager `json:"clients"`
+}
+
+type IGDTManager struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type IGDTClientManager struct {
+	ClientID    string `json:"clientId"`
+	PrimaryID   string `json:"primaryId"`
+	SecondaryID string `json:"secondaryId"`
+}
+
+// IGDTManagersReader lee los gestores de IGDT (para dirigir una solicitud de ingreso a un gestor concreto).
+type IGDTManagersReader interface {
+	Managers(ctx context.Context, key string) (*IGDTManagers, error)
 }

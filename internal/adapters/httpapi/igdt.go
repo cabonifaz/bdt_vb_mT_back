@@ -14,6 +14,8 @@ func (s *Server) igdtRoutes(r chi.Router) {
 	r.With(manage).Delete("/integrations/igdt", s.igdtDisconnect)
 	r.With(manage).Post("/integrations/igdt/sync", s.igdtSync)
 	r.With(s.requirePerm("rq.rates.read")).Get("/catalog/tariff", s.igdtTariff)
+	// gestores de IGDT para dirigir una solicitud de ingreso (quien confirma candidatos)
+	r.With(s.requirePerm("rq.candidates")).Get("/igdt/managers", s.igdtManagers)
 }
 
 func (s *Server) igdtStatus(w http.ResponseWriter, r *http.Request) {
@@ -67,6 +69,17 @@ func (s *Server) igdtTariff(w http.ResponseWriter, r *http.Request) {
 	}
 	if out == nil {
 		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// igdtManagers: gestores de IGDT y los del cliente (?clientId= uuid del cliente en BDT). Si IGDT no responde,
+// available = false y la lista va vacía (no bloquea la confirmación).
+func (s *Server) igdtManagers(w http.ResponseWriter, r *http.Request) {
+	out, err := s.IGDT.ManagersFor(r.Context(), principal(r), r.URL.Query().Get("clientId"))
+	if err != nil {
+		s.writeErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, out)

@@ -55,3 +55,31 @@ func TestLinkBDT(t *testing.T) {
 		t.Fatalf("401: esperaba IGDT_KEY_INVALID, obtuve %v", err)
 	}
 }
+
+// Managers: GET /integration/v1/managers con el token; 403 = falta el alcance.
+func TestManagers(t *testing.T) {
+	status := http.StatusOK
+	var key, method string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/integration/v1/managers" {
+			http.NotFound(w, r)
+			return
+		}
+		key, method = r.Header.Get("X-Api-Key"), r.Method
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(`{"managers":[{"id":"m1","name":"Ana"}],"clients":[{"clientId":"c1","primaryId":"m1","secondaryId":""}]}`))
+	}))
+	defer srv.Close()
+	c := New(srv.URL)
+	out, err := c.Managers(context.Background(), "igdt_token")
+	if err != nil || method != http.MethodGet || key != "igdt_token" {
+		t.Fatalf("Managers: %v %s %s", err, method, key)
+	}
+	if len(out.Managers) != 1 || out.Managers[0].Name != "Ana" || out.Clients[0].PrimaryID != "m1" || out.Clients[0].SecondaryID != "" {
+		t.Fatalf("respuesta: %+v", out)
+	}
+	status = http.StatusForbidden
+	if _, err := c.Managers(context.Background(), "igdt_token"); domain.AsError(err).Code != "IGDT_SCOPE_MISSING" {
+		t.Fatalf("403: %v", err)
+	}
+}

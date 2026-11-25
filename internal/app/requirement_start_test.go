@@ -34,14 +34,14 @@ func TestValidStartDate(t *testing.T) {
 
 type startRepo struct {
 	ports.RequirementRepository
-	moved, set *string
-	moveCalls  int
-	err        error
+	moved, set, mgr *string
+	moveCalls       int
+	err             error
 }
 
-func (r *startRepo) CandidateMove(_ context.Context, _ ports.Meta, _ uint64, _, _ string, _ *string, _ *int, start *string) (string, error) {
+func (r *startRepo) CandidateMove(_ context.Context, _ ports.Meta, _ uint64, _, _ string, _ *string, _ *int, start, mgr *string) (string, error) {
 	r.moveCalls++
-	r.moved = start
+	r.moved, r.mgr = start, mgr
 	return "CONFIRMED", r.err
 }
 
@@ -73,7 +73,7 @@ func TestMoveCandidateStartDate(t *testing.T) {
 	ctx := context.Background()
 	for _, bad := range []string{"2020-01-01", "2099-01-01", "mañana"} {
 		d := bad
-		if _, err := s.MoveCandidate(ctx, rqPrincipal(), "", testCand, testStage, nil, nil, &d); !errors.Is(err, domain.ErrValidation) {
+		if _, err := s.MoveCandidate(ctx, rqPrincipal(), "", testCand, testStage, nil, nil, &d, nil); !errors.Is(err, domain.ErrValidation) {
 			t.Fatalf("%s: se esperaba VALIDATION, llegó %v", bad, err)
 		}
 	}
@@ -81,14 +81,14 @@ func TestMoveCandidateStartDate(t *testing.T) {
 		t.Fatalf("una fecha inválida no debe llegar al SP ni encolarse")
 	}
 	d := time.Now().UTC().AddDate(0, 0, 10).Format("2006-01-02")
-	if _, err := s.MoveCandidate(ctx, rqPrincipal(), "", testCand, testStage, nil, nil, &d); err != nil {
+	if _, err := s.MoveCandidate(ctx, rqPrincipal(), "", testCand, testStage, nil, nil, &d, nil); err != nil {
 		t.Fatal(err)
 	}
 	if repo.moved == nil || *repo.moved != d || len(out.candidates) != 1 || out.candidates[0] != testCand {
 		t.Fatalf("fecha al SP: %v, encolados: %v", repo.moved, out.candidates)
 	}
 	empty := ""
-	if _, err := s.MoveCandidate(ctx, rqPrincipal(), "", testCand, testStage, nil, nil, &empty); err != nil || repo.moved != nil {
+	if _, err := s.MoveCandidate(ctx, rqPrincipal(), "", testCand, testStage, nil, nil, &empty, nil); err != nil || repo.moved != nil {
 		t.Fatalf("una fecha vacía viaja como null (el SP decide si es obligatoria): %v %v", err, repo.moved)
 	}
 }
@@ -131,5 +131,40 @@ func TestDecryptHireDocStartDate(t *testing.T) {
 		if v, ok := c["startDate"]; !ok || v != want {
 			t.Fatalf("startDate: %v", c)
 		}
+	}
+}
+
+func (r *startRepo) CandidateHireSave(_ context.Context, _ ports.Meta, _ uint64, _, start string, mgr *string) error {
+	r.set, r.mgr = &start, mgr
+	return r.err
+}
+
+// Gestor dirigido: uuid válido o vacío (= gestores del cliente, null al SP); otro valor es 422 sin llegar al SP. Guardar
+// fecha y gestor re-encola la solicitud de ingreso.
+func TestHireManager(t *testing.T) {
+	repo, out := &startRepo{}, &outboxSpy{}
+	s := &RequirementService{Repo: repo, IGDT: out}
+	ctx := context.Background()
+	d := time.Now().UTC().AddDate(0, 0, 5).Format("2006-01-02")
+	bad := "gestor-1"
+	if _, err := s.MoveCandidate(ctx, rqPrincipal(), "", testCand, testStage, nil, nil, &d, &bad); !errors.Is(err, domain.ErrValidation) || repo.moveCalls != 0 {
+		t.Fatalf("gestor inválido al confirmar: %v", err)
+	}
+	if err := s.SaveHire(ctx, rqPrincipal(), "", testCand, d, &bad); !errors.Is(err, domain.ErrValidation) || repo.set != nil {
+		t.Fatalf("gestor inválido al guardar: %v", err)
+	}
+	mgr := testStage
+	if _, err := s.MoveCandidate(ctx, rqPrincipal(), "", testCand, testStage, nil, nil, &d, &mgr); err != nil || repo.mgr == nil || *repo.mgr != mgr {
+		t.Fatalf("gestor al SP: %v %v", err, repo.mgr)
+	}
+	empty := ""
+	if err := s.SaveHire(ctx, rqPrincipal(), "", testCand, d, &empty); err != nil || repo.mgr != nil || repo.set == nil || *repo.set != d {
+		t.Fatalf("vacío = gestores del cliente (null): %v %v", err, repo.mgr)
+	}
+	if len(out.candidates) != 2 {
+		t.Fatalf("encolados: %v", out.candidates)
+	}
+	if err := s.SaveHire(ctx, rqPrincipal(), "", testCand, "2001-01-01", nil); !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("fecha fuera de rango: %v", err)
 	}
 }

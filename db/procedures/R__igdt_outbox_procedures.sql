@@ -236,7 +236,9 @@ BEGIN
            -- solicitantes de la ficha de ingreso: quien confirmó y el analista responsable del RQ (null si el RQ no tiene)
            'confirmedByNameEnc', TO_BASE64(cu.full_name_enc), 'confirmedByEmailEnc', TO_BASE64(cu.email_enc),
            'confirmedAt', DATE_FORMAT(IFNULL(rc.stage_at, IFNULL(rc.updated_at, rc.created_at)), '%Y-%m-%dT%H:%i:%s.%fZ'),
-           'rqAnalystNameEnc', TO_BASE64(au.full_name_enc), 'rqAnalystEmailEnc', TO_BASE64(au.email_enc)) AS doc
+           'rqAnalystNameEnc', TO_BASE64(au.full_name_enc), 'rqAnalystEmailEnc', TO_BASE64(au.email_enc),
+           -- gestor de IGDT al que Selección dirigió la solicitud (null = gestores del cliente)
+           'igdtManagerId', rc.igdt_manager_id) AS doc
     FROM JSON_TABLE(p_uuids, '$[*]' COLUMNS (u CHAR(36) PATH '$')) j
     JOIN requirement_candidate rc ON rc.uuid = j.u
     JOIN requirement r ON r.id = rc.requirement_id AND r.tenant_id = p_tenant_id

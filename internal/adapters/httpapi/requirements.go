@@ -28,6 +28,7 @@ func (s *Server) requirementRoutes(r chi.Router) {
 	r.With(cand).Post("/requirements/{id}/candidates", s.rqAddCandidate)
 	r.With(cand).Patch("/requirements/candidates/{cid}", s.rqMoveCandidate)
 	r.With(cand).Put("/requirements/candidates/{cid}/start-date", s.rqCandidateStartDate)
+	r.With(cand).Put("/requirements/candidates/{cid}/hire", s.rqCandidateHire)
 	r.With(cand).Delete("/requirements/candidates/{cid}", s.rqRemoveCandidate)
 	r.With(read).Get("/talents/{id}/applications", s.rqByTalent)
 	r.With(read).Get("/clients/{client}/contacts", s.rqContacts)
@@ -181,18 +182,36 @@ func (s *Server) rqMoveCandidate(w http.ResponseWriter, r *http.Request) {
 		StageID   string  `json:"stageId"`
 		VacancyID *string `json:"vacancyId"`
 		Order     *int    `json:"order"`
-		StartDate *string `json:"startDate"` // fecha tentativa de inicio de labores (obligatoria al confirmar)
+		StartDate *string `json:"startDate"`     // fecha tentativa de inicio de labores (obligatoria al confirmar)
+		ManagerID *string `json:"igdtManagerId"` // gestor de IGDT dirigido (null = gestores del cliente)
 	}
 	if err := decode(w, r, &in); err != nil {
 		s.writeErr(w, r, err)
 		return
 	}
-	stage, err := s.Requirements.MoveCandidate(r.Context(), principal(r), s.clientIP(r), chi.URLParam(r, "cid"), in.StageID, in.VacancyID, in.Order, in.StartDate)
+	stage, err := s.Requirements.MoveCandidate(r.Context(), principal(r), s.clientIP(r), chi.URLParam(r, "cid"), in.StageID, in.VacancyID, in.Order, in.StartDate, in.ManagerID)
 	if err != nil {
 		s.writeErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"stage": stage})
+}
+
+// rqCandidateHire guarda la fecha tentativa de inicio y el gestor de IGDT dirigido de un candidato confirmado.
+func (s *Server) rqCandidateHire(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		StartDate string  `json:"startDate"`
+		ManagerID *string `json:"igdtManagerId"`
+	}
+	if err := decode(w, r, &in); err != nil {
+		s.writeErr(w, r, err)
+		return
+	}
+	if err := s.Requirements.SaveHire(r.Context(), principal(r), s.clientIP(r), chi.URLParam(r, "cid"), in.StartDate, in.ManagerID); err != nil {
+		s.writeErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"startDate": in.StartDate, "igdtManagerId": in.ManagerID})
 }
 
 // rqCandidateStartDate corrige la fecha tentativa de inicio de labores de un candidato confirmado.
