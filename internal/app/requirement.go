@@ -420,18 +420,51 @@ func (s *RequirementService) AddCandidate(ctx context.Context, p *domain.Princip
 	return ok, err
 }
 
-func (s *RequirementService) MoveCandidate(ctx context.Context, p *domain.Principal, ip, id, stageID string, vacancyID *string, order *int) (string, error) {
+// validStartDate: fecha tentativa de inicio de labores (AAAA-MM-DD), no anterior a hoy - 30 días ni posterior a
+// hoy + 1 año (UTC; el SP aplica la misma regla).
+func validStartDate(s string, now time.Time) bool {
+	d, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		return false
+	}
+	today := time.Date(now.UTC().Year(), now.UTC().Month(), now.UTC().Day(), 0, 0, 0, 0, time.UTC)
+	return !d.Before(today.AddDate(0, 0, -30)) && !d.After(today.AddDate(1, 0, 0))
+}
+
+// MoveCandidate mueve al candidato de etapa/vacante. startDate (fecha tentativa de inicio de labores) es obligatoria
+// al confirmar (lo exige el SP, que conoce la etapa); si viene, se valida aquí.
+func (s *RequirementService) MoveCandidate(ctx context.Context, p *domain.Principal, ip, id, stageID string, vacancyID *string, order *int, startDate *string) (string, error) {
 	tid, err := tenantOf(p)
 	if err != nil {
 		return "", err
 	}
 	vacancyID = nilIfEmpty(vacancyID)
-	if !validUUID(id) || !validUUID(stageID) || !optRef(vacancyID) || (order != nil && (*order < 0 || *order > 1_000_000)) {
+	startDate = nilIfEmpty(startDate)
+	if !validUUID(id) || !validUUID(stageID) || !optRef(vacancyID) || (order != nil && (*order < 0 || *order > 1_000_000)) ||
+		(startDate != nil && !validStartDate(*startDate, time.Now())) {
 		return "", domain.ErrValidation
 	}
-	to, err := s.Repo.CandidateMove(ctx, meta(p, ip), tid, id, stageID, vacancyID, order)
+	to, err := s.Repo.CandidateMove(ctx, meta(p, ip), tid, id, stageID, vacancyID, order, startDate)
 	s.outCandidate(ctx, tid, id, err)
 	return to, err
+}
+
+// SetCandidateStartDate corrige la fecha tentativa de inicio de un confirmado (mientras IGDT no registre el ingreso)
+// y re-encola la solicitud de ingreso para que IGDT reciba la fecha nueva.
+func (s *RequirementService) SetCandidateStartDate(ctx context.Context, p *domain.Principal, ip, id, startDate string) error {
+	tid, err := tenantOf(p)
+	if err != nil {
+		return err
+	}
+	if !validUUID(id) {
+		return domain.ErrNotFound
+	}
+	if !validStartDate(startDate, time.Now()) {
+		return domain.ErrValidation
+	}
+	err = s.Repo.CandidateStartDate(ctx, meta(p, ip), tid, id, startDate)
+	s.outCandidate(ctx, tid, id, err)
+	return err
 }
 
 func (s *RequirementService) RemoveCandidate(ctx context.Context, p *domain.Principal, ip, id string) error {

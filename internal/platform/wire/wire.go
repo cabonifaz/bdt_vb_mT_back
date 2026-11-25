@@ -60,7 +60,7 @@ func Build(ctx context.Context, cfg config.Config, log *slog.Logger) (*App, erro
 		Cfg: app.AuthConfig{RefreshTTL: cfg.RefreshTTL, RememberTTL: cfg.RememberTTL, ReuseGrace: cfg.ReuseGrace, MaxAttempts: 5, LockMinutes: 15}}
 	// invitaciones: por Resend si hay RESEND_API_KEY; si no, solo quedan en el log
 	var invMailer ports.Mailer = mailer.LogMailer{Log: log}
-	if rs := (mailer.Resend{Key: cfg.ResendAPIKey, From: cfg.MailFrom, FromName: cfg.MailFromName}); rs.Enabled() {
+	if rs := (mailer.Resend{Key: cfg.ResendAPIKey, From: cfg.MailFrom, FromName: cfg.MailFromName, RedirectTo: cfg.MailRedirectTo}); rs.Enabled() {
 		invMailer = rs
 	}
 	users := &app.UserService{Users: mysql.UserRepo{Store: store}, Invitations: mysql.InvitationRepo{Store: store},

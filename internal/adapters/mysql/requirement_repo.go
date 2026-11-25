@@ -170,8 +170,12 @@ func (r RequirementRepo) CandidateAdd(ctx context.Context, m ports.Meta, tenantI
 	return created, err
 }
 
-func (r RequirementRepo) CandidateMove(ctx context.Context, m ports.Meta, tenantID uint64, id, stageID string, vacancyID *string, order *int) (string, error) {
-	rs, err := r.call(ctx, "sp_rq_candidate_move", m.ActorID, tenantID, id, stageID, vacancyID, optI(order), nullStr(m.IP))
+func (r RequirementRepo) CandidateStartDate(ctx context.Context, m ports.Meta, tenantID uint64, id, startDate string) error {
+	return r.exec(ctx, "sp_rq_candidate_start_date", m.ActorID, tenantID, id, startDate, nullStr(m.IP))
+}
+
+func (r RequirementRepo) CandidateMove(ctx context.Context, m ports.Meta, tenantID uint64, id, stageID string, vacancyID *string, order *int, startDate *string) (string, error) {
+	rs, err := r.call(ctx, "sp_rq_candidate_move", m.ActorID, tenantID, id, stageID, vacancyID, optI(order), optStr(startDate), nullStr(m.IP))
 	if err != nil {
 		return "", err
 	}

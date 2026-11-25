@@ -14,8 +14,11 @@ import (
 
 // Resend: correo saliente por la API HTTP de Resend (https://resend.com/docs/api-reference/emails/send-email).
 // La llave viene de RESEND_API_KEY; el remitente (MAIL_FROM) debe ser de un dominio verificado en Resend.
+// RedirectTo (MAIL_REDIRECT_TO, para staging): si tiene valor, TODO correo va solo a esa dirección (sin CC ni BCC), con
+// el asunto prefijado "[STAGING] " y una primera línea "Destinatario original: <lista>" en el texto.
 type Resend struct {
 	Key, From, FromName string
+	RedirectTo          string
 	BaseURL             string // por defecto https://api.resend.com (las pruebas lo cambian)
 	HTTP                *http.Client
 }
@@ -37,11 +40,22 @@ func (r Resend) send(ctx context.Context, to, subject, text string) error {
 	if err != nil {
 		return fmt.Errorf("dirección inválida")
 	}
+	recipients := []string{addr.Address}
+	if redirect := strings.TrimSpace(r.RedirectTo); redirect != "" {
+		// staging: nunca se escribe al destinatario real; con una redirección inválida no se envía nada
+		ra, err := mail.ParseAddress(redirect)
+		if err != nil {
+			return fmt.Errorf("MAIL_REDIRECT_TO inválido")
+		}
+		text = "Destinatario original: " + strings.Join(recipients, ", ") + "\n\n" + text
+		subject = "[STAGING] " + subject
+		recipients = []string{ra.Address}
+	}
 	from := r.From
 	if r.FromName != "" {
 		from = fmt.Sprintf("%s <%s>", strings.NewReplacer("<", "", ">", "", "\"", "").Replace(r.FromName), r.From)
 	}
-	raw, err := json.Marshal(map[string]any{"from": from, "to": []string{addr.Address}, "subject": subject, "text": text})
+	raw, err := json.Marshal(map[string]any{"from": from, "to": recipients, "subject": subject, "text": text})
 	if err != nil {
 		return err
 	}

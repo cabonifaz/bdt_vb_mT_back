@@ -230,7 +230,9 @@ BEGIN
                    (SELECT LOWER(JSON_UNQUOTE(JSON_EXTRACT(label_i18n, '$.es'))) FROM master_item WHERE id = r.duration_unit_item_id))),
                'contract', IF(r.contract_value IS NULL, NULL, CONCAT(TRIM(TRAILING '.' FROM TRIM(TRAILING '0' FROM r.contract_value)), ' ',
                    (SELECT LOWER(JSON_UNQUOTE(JSON_EXTRACT(label_i18n, '$.es'))) FROM master_item WHERE id = r.contract_unit_item_id))),
-               'emo', r.needs_emo = 1, 'sctr', r.needs_sctr = 1, 'laptop', r.needs_laptop = 1),
+               'emo', r.needs_emo = 1, 'sctr', r.needs_sctr = 1, 'laptop', r.needs_laptop = 1,
+               -- fecha tentativa de inicio de labores registrada por Selección al confirmar (AAAA-MM-DD; null si no tiene)
+               'startDate', DATE_FORMAT(rc.tentative_start_date, '%Y-%m-%d')),
            -- solicitantes de la ficha de ingreso: quien confirmó y el analista responsable del RQ (null si el RQ no tiene)
            'confirmedByNameEnc', TO_BASE64(cu.full_name_enc), 'confirmedByEmailEnc', TO_BASE64(cu.email_enc),
            'confirmedAt', DATE_FORMAT(IFNULL(rc.stage_at, IFNULL(rc.updated_at, rc.created_at)), '%Y-%m-%dT%H:%i:%s.%fZ'),

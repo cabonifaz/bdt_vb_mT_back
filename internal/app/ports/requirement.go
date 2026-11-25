@@ -76,7 +76,9 @@ type RequirementRepository interface {
 	Reopen(ctx context.Context, m Meta, tenantID uint64, id, reason, notes string, candidates []string, statusID *string) (*RQChange, error)
 	Delete(ctx context.Context, m Meta, tenantID uint64, id string) error
 	CandidateAdd(ctx context.Context, m Meta, tenantID uint64, rqID, id, talentID, vacancyID string) (bool, error)
-	CandidateMove(ctx context.Context, m Meta, tenantID uint64, id, stageID string, vacancyID *string, order *int) (string, error)
+	CandidateMove(ctx context.Context, m Meta, tenantID uint64, id, stageID string, vacancyID *string, order *int, startDate *string) (string, error)
+	// CandidateStartDate corrige la fecha tentativa de inicio de labores (AAAA-MM-DD) de un candidato confirmado.
+	CandidateStartDate(ctx context.Context, m Meta, tenantID uint64, id, startDate string) error
 	CandidateRemove(ctx context.Context, m Meta, tenantID uint64, id string) error
 	ByTalent(ctx context.Context, m Meta, tenantID uint64, talentID string) ([]json.RawMessage, error)
 	Contacts(ctx context.Context, m Meta, tenantID uint64, clientID string) ([]json.RawMessage, error)

@@ -3,6 +3,11 @@
 Formato: `## vMAYOR.MENOR — AAAA-MM-DD`, seguido de los cambios en viñetas (español). Al publicar una versión se
 sube `VERSION` y se agrega su sección aquí: la API la registra al desplegarse en cada ambiente y la notifica.
 
+## v1.15 — 2026-11-25
+- Al confirmar a un candidato en el pipeline del requerimiento, Selección debe registrar la fecha tentativa de inicio de labores (no anterior a 30 días atrás ni posterior a un año). La fecha se ve en la tarjeta del candidato confirmado y se puede corregir mientras IGDT no haya registrado el ingreso; cada cambio queda en la línea de tiempo del postulante.
+- La solicitud de ingreso que BDT envía a IGDT incluye la fecha tentativa de inicio, y se vuelve a enviar cada vez que la fecha cambia. Los candidatos confirmados antes de esta versión quedan sin fecha hasta que Selección la registre.
+- Técnico: en staging, los correos salientes pueden redirigirse a una sola dirección de pruebas (MAIL_REDIRECT_TO), con el asunto marcado [STAGING] y el destinatario original al inicio del texto.
+
 ## v1.14 — 2026-11-25
 - Las solicitudes de ingreso que BDT envía a IGDT incluyen ahora a los solicitantes de la ficha: el nombre y correo del usuario que confirmó el ingreso y el nombre y correo del analista responsable del requerimiento (el responsable vigente asignado primero), para que IGDT les envíe las fichas de ingreso.
 - Las solicitudes de ingreso vigentes ya enviadas se vuelven a enviar automáticamente con estos datos.

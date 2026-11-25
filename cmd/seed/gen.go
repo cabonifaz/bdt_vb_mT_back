@@ -602,7 +602,12 @@ func (e *env) genRQs(ctx context.Context, spec TenantSpec, n int, d rqDeps) {
 			}
 			target := candidateStage(e, final, confirmed[v.ID] < capacity[v.ID])
 			move := func(code string) bool {
-				_, err := e.rqs.MoveCandidate(ctx, owner.p, ip, cid, stage(code), nil, nil)
+				var start *string
+				if code == "CONFIRMED" { // al confirmar se exige la fecha tentativa de inicio de labores
+					d := time.Now().AddDate(0, 0, 7+e.intn(30)).Format("2006-01-02")
+					start = &d
+				}
+				_, err := e.rqs.MoveCandidate(ctx, owner.p, ip, cid, stage(code), nil, nil, start)
 				return !e.fails("mover candidato a "+code, err)
 			}
 			switch target {

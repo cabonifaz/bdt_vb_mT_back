@@ -27,6 +27,7 @@ func (s *Server) requirementRoutes(r chi.Router) {
 	r.With(s.requirePerm("rq.reopen"), s.requireFeature("rq_reopen")).Post("/requirements/{id}/reopen", s.rqReopen)
 	r.With(cand).Post("/requirements/{id}/candidates", s.rqAddCandidate)
 	r.With(cand).Patch("/requirements/candidates/{cid}", s.rqMoveCandidate)
+	r.With(cand).Put("/requirements/candidates/{cid}/start-date", s.rqCandidateStartDate)
 	r.With(cand).Delete("/requirements/candidates/{cid}", s.rqRemoveCandidate)
 	r.With(read).Get("/talents/{id}/applications", s.rqByTalent)
 	r.With(read).Get("/clients/{client}/contacts", s.rqContacts)
@@ -180,17 +181,34 @@ func (s *Server) rqMoveCandidate(w http.ResponseWriter, r *http.Request) {
 		StageID   string  `json:"stageId"`
 		VacancyID *string `json:"vacancyId"`
 		Order     *int    `json:"order"`
+		StartDate *string `json:"startDate"` // fecha tentativa de inicio de labores (obligatoria al confirmar)
 	}
 	if err := decode(w, r, &in); err != nil {
 		s.writeErr(w, r, err)
 		return
 	}
-	stage, err := s.Requirements.MoveCandidate(r.Context(), principal(r), s.clientIP(r), chi.URLParam(r, "cid"), in.StageID, in.VacancyID, in.Order)
+	stage, err := s.Requirements.MoveCandidate(r.Context(), principal(r), s.clientIP(r), chi.URLParam(r, "cid"), in.StageID, in.VacancyID, in.Order, in.StartDate)
 	if err != nil {
 		s.writeErr(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"stage": stage})
+}
+
+// rqCandidateStartDate corrige la fecha tentativa de inicio de labores de un candidato confirmado.
+func (s *Server) rqCandidateStartDate(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		StartDate string `json:"startDate"`
+	}
+	if err := decode(w, r, &in); err != nil {
+		s.writeErr(w, r, err)
+		return
+	}
+	if err := s.Requirements.SetCandidateStartDate(r.Context(), principal(r), s.clientIP(r), chi.URLParam(r, "cid"), in.StartDate); err != nil {
+		s.writeErr(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"startDate": in.StartDate})
 }
 
 func (s *Server) rqRemoveCandidate(w http.ResponseWriter, r *http.Request) {
